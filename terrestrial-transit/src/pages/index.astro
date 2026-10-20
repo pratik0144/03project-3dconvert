@@ -1,0 +1,64 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Converter from '../components/converter/Converter';
+---
+
+<Layout>
+  <section class="py-16 sm:py-20">
+    <!-- Hero -->
+    <div class="text-center max-w-[800px] mx-auto px-4 sm:px-6 mb-12">
+      <p class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4 tracking-wide">
+        Free · Private · In-Browser
+      </p>
+      <h1 class="text-[32px] sm:text-[48px] font-semibold leading-[1] tracking-[-2.4px] text-ink mb-4">
+        3D Model File Converter
+      </h1>
+      <p class="text-[16px] leading-6 text-body max-w-[600px] mx-auto">
+        Convert between STL, OBJ, STEP, 3MF, GLB, and IGES.
+        Runs entirely in your browser — your files never leave your device.
+      </p>
+    </div>
+
+    <!-- Converter tool -->
+    <Converter client:load />
+  </section>
+
+  <!-- Features section -->
+  <section class="py-16 border-t border-hairline">
+    <div class="max-w-[1200px] mx-auto px-4 sm:px-6">
+      <p class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-8 text-center tracking-wide">
+        How it works
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+          <div class="text-[24px] mb-3">📁</div>
+          <h3 class="text-[14px] font-semibold text-ink mb-1">Drop your files</h3>
+          <p class="text-[14px] leading-5 text-body">
+            Drag and drop one or many 3D model files. We detect the format automatically.
+          </p>
+        </div>
+        <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+          <div class="text-[24px] mb-3">🔄</div>
+          <h3 class="text-[14px] font-semibold text-ink mb-1">Choose output format</h3>
+          <p class="text-[14px] leading-5 text-body">
+            Pick from compatible formats. We show you when a conversion is lossy so there are no surprises.
+          </p>
+        </div>
+        <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+          <div class="text-[24px] mb-3">⚡</div>
+          <h3 class="text-[14px] font-semibold text-ink mb-1">Convert instantly</h3>
+          <p class="text-[14px] leading-5 text-body">
+            Everything runs in Web Workers. Your browser does all the work — nothing is uploaded anywhere.
+          </p>
+        </div>
+        <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+          <div class="text-[24px] mb-3">📦</div>
+          <h3 class="text-[14px] font-semibold text-ink mb-1">Download results</h3>
+          <p class="text-[14px] leading-5 text-body">
+            Get each file individually or download all as a ZIP. Unlimited conversions, forever free.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+</Layout>
