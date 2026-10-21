@@ -68,55 +68,97 @@ self.onmessage = async (e: MessageEvent<ConvertMessage>) => {
 
 /**
  * Parse a 3MF archive without DOMParser by unzipping with fflate
- * and extracting vertices/triangles via regex from the model XML.
+ * and extracting vertices/triangles via regex from all model XML files.
+ * Supports standard single-model files, multi-object models, and
+ * Bambu Studio / PrusaSlicer assemblies (3D/Objects/*.model).
  */
 function parse3MFBuffer(buffer: ArrayBuffer): THREE.Group {
   const archive = unzipSync(new Uint8Array(buffer));
+  const group = new THREE.Group();
 
-  // Find the model XML (usually 3D/3dmodel.model)
-  let modelXml = '';
-  for (const [name, data] of Object.entries(archive)) {
-    if (name.endsWith('.model')) {
-      modelXml = strFromU8(data as Uint8Array);
-      break;
+  const modelEntries = Object.entries(archive).filter(([name]) => name.endsWith('.model'));
+  if (modelEntries.length === 0) throw new Error('No .model file found in 3MF archive');
+
+  for (const [, fileData] of modelEntries) {
+    const modelXml = strFromU8(fileData as Uint8Array);
+    if (!modelXml.includes('<mesh')) continue;
+
+    const objectRe = /<object\b[^>]*>([\s\S]*?)<\/object>/gi;
+    let objMatch: RegExpExecArray | null;
+    let foundInFile = false;
+
+    while ((objMatch = objectRe.exec(modelXml)) !== null) {
+      const objXml = objMatch[1];
+      if (!objXml.includes('<mesh')) continue;
+
+      const vertices: number[] = [];
+      const indices: number[] = [];
+
+      const vertexRe = /<vertex\b([^>]+)\/>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = vertexRe.exec(objXml)) !== null) {
+        const a = m[1];
+        const x = parseFloat(a.match(/\bx=["']([^"']+)["']/i)?.[1] || '0');
+        const y = parseFloat(a.match(/\by=["']([^"']+)["']/i)?.[1] || '0');
+        const z = parseFloat(a.match(/\bz=["']([^"']+)["']/i)?.[1] || '0');
+        vertices.push(x, y, z);
+      }
+
+      const triRe = /<triangle\b([^>]+)\/>/gi;
+      while ((m = triRe.exec(objXml)) !== null) {
+        const a = m[1];
+        const v1 = parseInt(a.match(/\bv1=["']([^"']+)["']/i)?.[1] || '0', 10);
+        const v2 = parseInt(a.match(/\bv2=["']([^"']+)["']/i)?.[1] || '0', 10);
+        const v3 = parseInt(a.match(/\bv3=["']([^"']+)["']/i)?.[1] || '0', 10);
+        indices.push(v1, v2, v3);
+      }
+
+      if (vertices.length > 0) {
+        foundInFile = true;
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        if (indices.length > 0) geom.setIndex(indices);
+        geom.computeVertexNormals();
+
+        const mat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+        group.add(new THREE.Mesh(geom, mat));
+      }
+    }
+
+    if (!foundInFile) {
+      const vertices: number[] = [];
+      const indices: number[] = [];
+      const vertexRe = /<vertex\b([^>]+)\/>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = vertexRe.exec(modelXml)) !== null) {
+        const a = m[1];
+        const x = parseFloat(a.match(/\bx=["']([^"']+)["']/i)?.[1] || '0');
+        const y = parseFloat(a.match(/\by=["']([^"']+)["']/i)?.[1] || '0');
+        const z = parseFloat(a.match(/\bz=["']([^"']+)["']/i)?.[1] || '0');
+        vertices.push(x, y, z);
+      }
+      const triRe = /<triangle\b([^>]+)\/>/gi;
+      while ((m = triRe.exec(modelXml)) !== null) {
+        const a = m[1];
+        const v1 = parseInt(a.match(/\bv1=["']([^"']+)["']/i)?.[1] || '0', 10);
+        const v2 = parseInt(a.match(/\bv2=["']([^"']+)["']/i)?.[1] || '0', 10);
+        const v3 = parseInt(a.match(/\bv3=["']([^"']+)["']/i)?.[1] || '0', 10);
+        indices.push(v1, v2, v3);
+      }
+      if (vertices.length > 0) {
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        if (indices.length > 0) geom.setIndex(indices);
+        geom.computeVertexNormals();
+        group.add(new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0xcccccc })));
+      }
     }
   }
-  if (!modelXml) throw new Error('No .model file found in 3MF archive');
 
-  // Extract vertices — attribute order may vary
-  const vertices: number[] = [];
-  const vertexRe = /<vertex\b([^>]+)\/>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = vertexRe.exec(modelXml)) !== null) {
-    const a = m[1];
-    const x = parseFloat(a.match(/\bx=["']([^"']+)["']/i)?.[1] || '0');
-    const y = parseFloat(a.match(/\by=["']([^"']+)["']/i)?.[1] || '0');
-    const z = parseFloat(a.match(/\bz=["']([^"']+)["']/i)?.[1] || '0');
-    vertices.push(x, y, z);
+  if (group.children.length === 0) {
+    throw new Error('No vertices found in 3MF model');
   }
 
-  // Extract triangles
-  const indices: number[] = [];
-  const triRe = /<triangle\b([^>]+)\/>/gi;
-  while ((m = triRe.exec(modelXml)) !== null) {
-    const a = m[1];
-    const v1 = parseInt(a.match(/\bv1=["']([^"']+)["']/i)?.[1] || '0', 10);
-    const v2 = parseInt(a.match(/\bv2=["']([^"']+)["']/i)?.[1] || '0', 10);
-    const v3 = parseInt(a.match(/\bv3=["']([^"']+)["']/i)?.[1] || '0', 10);
-    indices.push(v1, v2, v3);
-  }
-
-  if (vertices.length === 0) throw new Error('No vertices found in 3MF model');
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  if (indices.length > 0) geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-
-  const material = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-  const mesh = new THREE.Mesh(geometry, material);
-  const group = new THREE.Group();
-  group.add(mesh);
   return group;
 }
 
@@ -224,6 +266,7 @@ async function exportOutput(
     case '3mf': {
       // three.js doesn't have a 3MF exporter built-in.
       // We'll create a minimal 3MF file (it's a ZIP with XML).
+      scene.updateMatrixWorld(true);
 
       // Collect all meshes
       const meshes: THREE.Mesh[] = [];
@@ -237,15 +280,17 @@ async function exportOutput(
       let verticesXml = '';
       let trianglesXml = '';
       let vertexOffset = 0;
+      const worldPos = new THREE.Vector3();
 
       for (const mesh of meshes) {
         const geom = mesh.geometry;
         const pos = geom.getAttribute('position');
         const idx = geom.getIndex();
 
-        // Vertices
+        // Vertices transformed to world space
         for (let i = 0; i < pos.count; i++) {
-          verticesXml += `        <vertex x="${pos.getX(i)}" y="${pos.getY(i)}" z="${pos.getZ(i)}" />\n`;
+          worldPos.set(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(mesh.matrixWorld);
+          verticesXml += `        <vertex x="${worldPos.x}" y="${worldPos.y}" z="${worldPos.z}" />\n`;
         }
 
         // Triangles

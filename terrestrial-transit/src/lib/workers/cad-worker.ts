@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -333,55 +334,97 @@ function writeIGES(oc: any, shape: any): ArrayBuffer {
 
 /**
  * Parse a 3MF archive without DOMParser by unzipping with fflate
- * and extracting vertices/triangles via regex from the model XML.
+ * and extracting vertices/triangles via regex from all model XML files.
+ * Supports standard single-model files, multi-object models, and
+ * Bambu Studio / PrusaSlicer assemblies (3D/Objects/*.model).
  */
 function parse3MFBuffer(buffer: ArrayBuffer): THREE.Group {
   const archive = unzipSync(new Uint8Array(buffer));
+  const group = new THREE.Group();
 
-  // Find the model XML (usually 3D/3dmodel.model)
-  let modelXml = '';
-  for (const [name, data] of Object.entries(archive)) {
-    if (name.endsWith('.model')) {
-      modelXml = strFromU8(data as Uint8Array);
-      break;
+  const modelEntries = Object.entries(archive).filter(([name]) => name.endsWith('.model'));
+  if (modelEntries.length === 0) throw new Error('No .model file found in 3MF archive');
+
+  for (const [, fileData] of modelEntries) {
+    const modelXml = strFromU8(fileData as Uint8Array);
+    if (!modelXml.includes('<mesh')) continue;
+
+    const objectRe = /<object\b[^>]*>([\s\S]*?)<\/object>/gi;
+    let objMatch: RegExpExecArray | null;
+    let foundInFile = false;
+
+    while ((objMatch = objectRe.exec(modelXml)) !== null) {
+      const objXml = objMatch[1];
+      if (!objXml.includes('<mesh')) continue;
+
+      const vertices: number[] = [];
+      const indices: number[] = [];
+
+      const vertexRe = /<vertex\b([^>]+)\/>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = vertexRe.exec(objXml)) !== null) {
+        const a = m[1];
+        const x = parseFloat(a.match(/\bx=["']([^"']+)["']/i)?.[1] || '0');
+        const y = parseFloat(a.match(/\by=["']([^"']+)["']/i)?.[1] || '0');
+        const z = parseFloat(a.match(/\bz=["']([^"']+)["']/i)?.[1] || '0');
+        vertices.push(x, y, z);
+      }
+
+      const triRe = /<triangle\b([^>]+)\/>/gi;
+      while ((m = triRe.exec(objXml)) !== null) {
+        const a = m[1];
+        const v1 = parseInt(a.match(/\bv1=["']([^"']+)["']/i)?.[1] || '0', 10);
+        const v2 = parseInt(a.match(/\bv2=["']([^"']+)["']/i)?.[1] || '0', 10);
+        const v3 = parseInt(a.match(/\bv3=["']([^"']+)["']/i)?.[1] || '0', 10);
+        indices.push(v1, v2, v3);
+      }
+
+      if (vertices.length > 0) {
+        foundInFile = true;
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        if (indices.length > 0) geom.setIndex(indices);
+        geom.computeVertexNormals();
+
+        const mat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+        group.add(new THREE.Mesh(geom, mat));
+      }
+    }
+
+    if (!foundInFile) {
+      const vertices: number[] = [];
+      const indices: number[] = [];
+      const vertexRe = /<vertex\b([^>]+)\/>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = vertexRe.exec(modelXml)) !== null) {
+        const a = m[1];
+        const x = parseFloat(a.match(/\bx=["']([^"']+)["']/i)?.[1] || '0');
+        const y = parseFloat(a.match(/\by=["']([^"']+)["']/i)?.[1] || '0');
+        const z = parseFloat(a.match(/\bz=["']([^"']+)["']/i)?.[1] || '0');
+        vertices.push(x, y, z);
+      }
+      const triRe = /<triangle\b([^>]+)\/>/gi;
+      while ((m = triRe.exec(modelXml)) !== null) {
+        const a = m[1];
+        const v1 = parseInt(a.match(/\bv1=["']([^"']+)["']/i)?.[1] || '0', 10);
+        const v2 = parseInt(a.match(/\bv2=["']([^"']+)["']/i)?.[1] || '0', 10);
+        const v3 = parseInt(a.match(/\bv3=["']([^"']+)["']/i)?.[1] || '0', 10);
+        indices.push(v1, v2, v3);
+      }
+      if (vertices.length > 0) {
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        if (indices.length > 0) geom.setIndex(indices);
+        geom.computeVertexNormals();
+        group.add(new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0xcccccc })));
+      }
     }
   }
-  if (!modelXml) throw new Error('No .model file found in 3MF archive');
 
-  // Extract vertices — attribute order may vary
-  const vertices: number[] = [];
-  const vertexRe = /<vertex\b([^>]+)\/>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = vertexRe.exec(modelXml)) !== null) {
-    const a = m[1];
-    const x = parseFloat(a.match(/\bx=["']([^"']+)["']/i)?.[1] || '0');
-    const y = parseFloat(a.match(/\by=["']([^"']+)["']/i)?.[1] || '0');
-    const z = parseFloat(a.match(/\bz=["']([^"']+)["']/i)?.[1] || '0');
-    vertices.push(x, y, z);
+  if (group.children.length === 0) {
+    throw new Error('No vertices found in 3MF model');
   }
 
-  // Extract triangles
-  const indices: number[] = [];
-  const triRe = /<triangle\b([^>]+)\/>/gi;
-  while ((m = triRe.exec(modelXml)) !== null) {
-    const a = m[1];
-    const v1 = parseInt(a.match(/\bv1=["']([^"']+)["']/i)?.[1] || '0', 10);
-    const v2 = parseInt(a.match(/\bv2=["']([^"']+)["']/i)?.[1] || '0', 10);
-    const v3 = parseInt(a.match(/\bv3=["']([^"']+)["']/i)?.[1] || '0', 10);
-    indices.push(v1, v2, v3);
-  }
-
-  if (vertices.length === 0) throw new Error('No vertices found in 3MF model');
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  if (indices.length > 0) geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-
-  const material = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-  const mesh = new THREE.Mesh(geometry, material);
-  const group = new THREE.Group();
-  group.add(mesh);
   return group;
 }
 
@@ -452,6 +495,26 @@ function buildBinarySTL(geometry: THREE.BufferGeometry): ArrayBuffer {
 
 /* ────────── Mesh → BREP conversion ────────── */
 
+function extractSceneGeometry(scene: THREE.Object3D): THREE.BufferGeometry {
+  scene.updateMatrixWorld(true);
+  const geometries: THREE.BufferGeometry[] = [];
+
+  scene.traverse((child: any) => {
+    if (child.isMesh && child.geometry) {
+      const cloned = child.geometry.clone();
+      cloned.applyMatrix4(child.matrixWorld);
+      geometries.push(cloned);
+    }
+  });
+
+  if (geometries.length === 0) throw new Error('No geometry found in model');
+  if (geometries.length === 1) return geometries[0];
+
+  const merged = mergeGeometries(geometries);
+  if (!merged) throw new Error('Failed to merge scene geometries');
+  return merged;
+}
+
 /**
  * Convert a mesh (STL/OBJ/GLB/3MF) buffer into an OpenCascade TopoDS_Shape.
  *
@@ -473,34 +536,32 @@ async function meshToBrep(oc: any, buffer: ArrayBuffer, format: FormatId, unitSc
     const loader = new OBJLoader();
     const text = new TextDecoder().decode(buffer);
     const group = loader.parse(text);
-    let foundGeom: THREE.BufferGeometry | null = null;
-    group.traverse((child: any) => {
-      if (child.isMesh && !foundGeom) foundGeom = child.geometry;
-    });
-    if (!foundGeom) throw new Error('No geometry found in OBJ file');
-    geometry = foundGeom;
+    geometry = extractSceneGeometry(group);
   } else if (format === 'glb') {
     const loader = new GLTFLoader();
     const gltf = await new Promise<any>((resolve, reject) => {
       loader.parse(buffer, '', resolve, reject);
     });
-    let foundGeom: THREE.BufferGeometry | null = null;
-    gltf.scene.traverse((child: any) => {
-      if (child.isMesh && !foundGeom) foundGeom = child.geometry;
-    });
-    if (!foundGeom) throw new Error('No geometry found in GLB file');
-    geometry = foundGeom;
+    geometry = extractSceneGeometry(gltf.scene);
   } else if (format === '3mf') {
     // Custom parser — DOMParser is not available in Web Workers
     const group = parse3MFBuffer(buffer);
-    let foundGeom: THREE.BufferGeometry | null = null;
-    group.traverse((child: any) => {
-      if (child.isMesh && !foundGeom) foundGeom = child.geometry;
-    });
-    if (!foundGeom) throw new Error('No geometry found in 3MF file');
-    geometry = foundGeom;
+    geometry = extractSceneGeometry(group);
   } else {
     throw new Error(`Cannot convert ${format} to BREP`);
+  }
+
+  // Pre-flight density check: CAD B-Rep cannot handle >50K faces in 32-bit WASM
+  const triCount = geometry.getIndex()
+    ? geometry.getIndex()!.count / 3
+    : geometry.getAttribute('position').count / 3;
+
+  if (triCount > 50000) {
+    throw new Error(
+      `Mesh is too dense for CAD export (${Math.round(triCount).toLocaleString()} triangles). ` +
+      `Converting over 50,000 triangles into CAD B-Rep exceeds the browser WebAssembly memory limit (2 GB). ` +
+      `Please simplify the mesh or export to OBJ, GLB, or 3MF instead.`
+    );
   }
 
   // Ensure indexed geometry for consistent access
