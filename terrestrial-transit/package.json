@@ -9,7 +9,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "test": "node tests/regression-topology.test.ts"
   },
   "dependencies": {
     "@astrojs/react": "^7.1.0",

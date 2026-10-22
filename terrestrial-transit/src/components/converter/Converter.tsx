@@ -1,7 +1,15 @@
 import { useState, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import type { FormatId, UnitScale, ConversionRoute } from '../../lib/formats';
 import { FORMATS, detectFormat, getCompatibleOutputFormats, getRoute, ALL_EXTENSIONS, UNIT_SCALES } from '../../lib/formats';
-import { convertFile, getOutputFilename, type ConversionJob, type ConversionStatus } from '../../lib/converter-engine';
+import {
+  convertFile,
+  analyzeModel,
+  getOutputFilename,
+  type ConversionStatus,
+  type ModelAnalysis,
+  type ModelDimensions,
+  type CustomScale,
+} from '../../lib/converter-engine';
 
 const Preview3D = lazy(() => import('./Preview3D'));
 
@@ -18,6 +26,39 @@ interface FileJob {
   error?: string;
   result?: Blob;
   resultFilename?: string;
+
+  // Analysis state
+  isAnalyzing?: boolean;
+  analysis?: ModelAnalysis;
+  analysisError?: string;
+
+  // Dimension & scale customizer
+  customScale?: CustomScale;
+  targetDimensions?: ModelDimensions;
+  uniformScale?: boolean;
+  scaleMultiplier?: number;
+  isAdjusting?: boolean;
+}
+
+function formatDim(val: number | undefined): string {
+  if (val === undefined || isNaN(val)) return '0.0';
+  if (val >= 100) return val.toFixed(1);
+  if (val >= 10) return val.toFixed(2);
+  return val.toFixed(3);
+}
+
+function formatInputVal(val: number | undefined): string {
+  if (val === undefined || isNaN(val)) return '';
+  return parseFloat(val.toFixed(4)).toString();
+}
+
+function isScaled(job: FileJob): boolean {
+  if (!job.customScale) return false;
+  return (
+    Math.abs(job.customScale.x - 1) > 0.0001 ||
+    Math.abs(job.customScale.y - 1) > 0.0001 ||
+    Math.abs(job.customScale.z - 1) > 0.0001
+  );
 }
 
 export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
@@ -64,6 +105,10 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
         file,
         inputFormat: format,
         status: 'queued',
+        isAnalyzing: true,
+        uniformScale: true,
+        scaleMultiplier: 1,
+        customScale: { x: 1, y: 1, z: 1 },
       });
     }
 
@@ -83,6 +128,34 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
           const best = compat.find(c => c.route.support === 'full') || compat[0];
           setOutputFormat(best.format.id);
         }
+      }
+
+      // Automatically trigger 3D model geometry analysis
+      for (const job of jobs) {
+        analyzeModel(job.file, job.inputFormat)
+          .then((analysis) => {
+            setFiles(prev => prev.map(f => {
+              if (f.id !== job.id) return f;
+              return {
+                ...f,
+                isAnalyzing: false,
+                analysis,
+                targetDimensions: { ...analysis.dimensions },
+                customScale: { x: 1, y: 1, z: 1 },
+                scaleMultiplier: 1,
+              };
+            }));
+          })
+          .catch((err) => {
+            setFiles(prev => prev.map(f => {
+              if (f.id !== job.id) return f;
+              return {
+                ...f,
+                isAnalyzing: false,
+                analysisError: err?.message || 'Failed to analyze dimensions',
+              };
+            }));
+          });
       }
     }
   }, [files, outputFormat]);
@@ -119,6 +192,81 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
     setOutputFormat(defaultTo || null);
   }, [defaultTo]);
 
+  const toggleAdjusting = useCallback((id: string) => {
+    setFiles(prev => prev.map(f => (f.id === id ? { ...f, isAdjusting: !f.isAdjusting } : f)));
+  }, []);
+
+  const toggleUniformScale = useCallback((id: string) => {
+    setFiles(prev => prev.map(f => (f.id === id ? { ...f, uniformScale: !f.uniformScale } : f)));
+  }, []);
+
+  const applyScalePreset = useCallback((id: string, factor: number) => {
+    if (isNaN(factor) || factor <= 0) return;
+    setFiles(prev => prev.map(job => {
+      if (job.id !== id || !job.analysis) return job;
+      const orig = job.analysis.dimensions;
+      return {
+        ...job,
+        scaleMultiplier: factor,
+        customScale: { x: factor, y: factor, z: factor },
+        targetDimensions: {
+          x: orig.x * factor,
+          y: orig.y * factor,
+          z: orig.z * factor,
+        },
+      };
+    }));
+  }, []);
+
+  const updateDimension = useCallback((id: string, axis: 'x' | 'y' | 'z', value: number) => {
+    if (isNaN(value) || value <= 0) return;
+    setFiles(prev => prev.map(job => {
+      if (job.id !== id || !job.analysis) return job;
+      const orig = job.analysis.dimensions;
+      const safeVal = Math.max(0.0001, value);
+
+      if (job.uniformScale ?? true) {
+        const origAxis = orig[axis] || 1;
+        const ratio = safeVal / (origAxis > 0 ? origAxis : 1);
+        return {
+          ...job,
+          scaleMultiplier: ratio,
+          customScale: { x: ratio, y: ratio, z: ratio },
+          targetDimensions: {
+            x: orig.x * ratio,
+            y: orig.y * ratio,
+            z: orig.z * ratio,
+          },
+        };
+      } else {
+        const currentTarget = job.targetDimensions || { ...orig };
+        const newTarget = { ...currentTarget, [axis]: safeVal };
+        return {
+          ...job,
+          targetDimensions: newTarget,
+          customScale: {
+            x: orig.x > 0 ? newTarget.x / orig.x : 1,
+            y: orig.y > 0 ? newTarget.y / orig.y : 1,
+            z: orig.z > 0 ? newTarget.z / orig.z : 1,
+          },
+        };
+      }
+    }));
+  }, []);
+
+  const resetDimensions = useCallback((id: string) => {
+    setFiles(prev => prev.map(job => {
+      if (job.id !== id || !job.analysis) return job;
+      return {
+        ...job,
+        scaleMultiplier: 1,
+        customScale: { x: 1, y: 1, z: 1 },
+        targetDimensions: { ...job.analysis.dimensions },
+        uniformScale: true,
+      };
+    }));
+  }, []);
+
   const convertAll = useCallback(async () => {
     if (!outputFormat || files.length === 0) return;
     setIsConverting(true);
@@ -133,7 +281,13 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
       setFiles([...updatedFiles]);
 
       try {
-        const result = await convertFile(job.file, job.inputFormat, outputFormat, unitScale);
+        const result = await convertFile(
+          job.file,
+          job.inputFormat,
+          outputFormat,
+          unitScale,
+          job.customScale
+        );
         const resultFilename = getOutputFilename(job.file.name, outputFormat);
         updatedFiles[i] = { ...updatedFiles[i], status: 'done', result, resultFilename };
       } catch (err: any) {
@@ -276,17 +430,17 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
                 {compatibleOutputs.map(({ format, route }) => (
                   <option key={format.id} value={format.id}>
                     {format.name}
-                    {route.support === 'lossy' ? ' ⚠️' : ''}
+                    {route.support === 'lossy' ? ' ⓘ' : ''}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Unit selector */}
+            {/* Default Unit fallback selector (for STL) */}
             {showUnitSelector && (
               <div className="flex items-center gap-2">
                 <label className="font-mono text-[12px] font-medium leading-4 uppercase text-mute" htmlFor="unit-scale">
-                  Unit
+                  Default Unit
                 </label>
                 <select
                   id="unit-scale"
@@ -322,101 +476,287 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
             </div>
           </div>
 
-          {/* Lossy note */}
+          {/* Note message */}
           {currentRoute?.note && (
-            <div className="flex items-start gap-2 p-3 rounded-md bg-warning-soft border border-[#f5a623]/20 text-[13px] leading-5">
-              <span className="text-warning shrink-0 mt-0.5">⚠</span>
-              <p className="text-[#ab570a]">{currentRoute.note}</p>
+            <div className="flex items-start gap-2.5 p-3 rounded-md bg-canvas border border-hairline text-[13px] leading-5">
+              <svg className="w-4 h-4 text-mute shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <p className="text-body">
+                <span className="font-semibold text-ink">Note:</span> {currentRoute.note}
+              </p>
             </div>
           )}
 
           {/* File list */}
           <div className="border border-hairline rounded-md bg-canvas-elevated divide-y divide-hairline">
-            {files.map((job) => (
-              <div key={job.id}>
-                <div className="flex items-center gap-3 px-4 py-3">
-                  {/* File info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[14px] leading-5 text-ink font-medium truncate">{job.file.name}</p>
-                    <p className="text-[12px] leading-4 text-mute">
-                      {FORMATS[job.inputFormat].name} · {formatBytes(job.file.size)}
-                    </p>
-                  </div>
+            {files.map((job) => {
+              const currentDim = job.targetDimensions || job.analysis?.dimensions;
+              const scaled = isScaled(job);
 
-                  {/* Preview toggle */}
-                  {job.inputFormat !== 'step' && job.inputFormat !== 'iges' && (
-                    <button
-                      onClick={() => setPreviewFileId(previewFileId === job.id ? null : job.id)}
-                      className={`shrink-0 text-[12px] leading-4 font-mono uppercase transition-colors ${
-                        previewFileId === job.id ? 'text-link' : 'text-mute hover:text-ink'
-                      }`}
-                      aria-label={`Preview ${job.file.name}`}
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                    </button>
-                  )}
+              return (
+                <div key={job.id} className="divide-y divide-hairline">
+                  {/* File card header row */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3">
+                    {/* Left: Info & Dimensions */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] leading-5 text-ink font-medium truncate">{job.file.name}</p>
 
-                  {/* Status */}
-                  <div className="shrink-0 flex items-center gap-2">
-                    {job.status === 'queued' && (
-                      <span className="text-[12px] leading-4 text-mute font-mono uppercase">Queued</span>
-                    )}
-                    {job.status === 'converting' && (
-                      <span className="text-[12px] leading-4 text-link font-mono uppercase flex items-center gap-1.5">
-                        <span className="w-3 h-3 border-2 border-link border-t-transparent rounded-full animate-spin" />
-                        Converting
-                      </span>
-                    )}
-                    {job.status === 'done' && (
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 mt-1">
+                        <span className="text-[12px] leading-4 text-mute">
+                          {FORMATS[job.inputFormat].name} · {formatBytes(job.file.size)}
+                        </span>
+
+                        {job.isAnalyzing && (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-hairline-soft text-[11px] font-mono text-mute">
+                            <span className="w-2.5 h-2.5 border border-mute border-t-transparent rounded-full animate-spin" />
+                            Analyzing dimensions…
+                          </span>
+                        )}
+
+                        {job.analysis && currentDim && (
+                          <>
+                            <span className="text-mute text-[12px] hidden sm:inline">·</span>
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-canvas border border-hairline text-[11px] font-mono text-ink">
+                              <span className="text-mute text-[10px] font-sans font-medium">SIZE</span>
+                              <span className="font-medium">
+                                {formatDim(currentDim.x)} × {formatDim(currentDim.y)} × {formatDim(currentDim.z)} mm
+                              </span>
+                              {scaled && (
+                                <span className="ml-0.5 text-[10px] px-1 py-0.2 rounded bg-link/10 text-link font-medium">
+                                  {(job.scaleMultiplier || 1).toFixed(2).replace(/\.?0+$/, '')}×
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[11px] font-mono text-mute">
+                              {job.analysis.triangles.toLocaleString()} {job.analysis.isCad ? 'faces' : 'triangles'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleAdjusting(job.id)}
+                              className="text-[11px] font-mono text-link hover:underline inline-flex items-center gap-1"
+                            >
+                              {job.isAdjusting ? 'Close' : (scaled ? 'Edit Scale' : 'Adjust Dimensions')}
+                            </button>
+                          </>
+                        )}
+
+                        {job.analysisError && (
+                          <span className="text-[11px] font-mono text-mute">
+                            (Dimensions unavailable)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right: Actions & Status */}
+                    <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                      {/* Preview toggle */}
+                      {job.inputFormat !== 'step' && job.inputFormat !== 'iges' && (
+                        <button
+                          onClick={() => setPreviewFileId(previewFileId === job.id ? null : job.id)}
+                          className={`shrink-0 text-[12px] leading-4 font-mono uppercase transition-colors ${
+                            previewFileId === job.id ? 'text-link' : 'text-mute hover:text-ink'
+                          }`}
+                          aria-label={`Preview ${job.file.name}`}
+                          title="Preview 3D Model"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                        </button>
+                      )}
+
+                      {/* Status */}
+                      <div className="flex items-center gap-2">
+                        {job.status === 'queued' && (
+                          <span className="text-[12px] leading-4 text-mute font-mono uppercase">Queued</span>
+                        )}
+                        {job.status === 'converting' && (
+                          <span className="text-[12px] leading-4 text-link font-mono uppercase flex items-center gap-1.5">
+                            <span className="w-3 h-3 border-2 border-link border-t-transparent rounded-full animate-spin" />
+                            Converting
+                          </span>
+                        )}
+                        {job.status === 'done' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); downloadFile(job); }}
+                            className="text-[12px] leading-4 text-link font-mono uppercase hover:underline flex items-center gap-1"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download
+                          </button>
+                        )}
+                        {job.status === 'failed' && (
+                          <span className="text-[12px] leading-4 text-error font-mono uppercase" title={job.error}>
+                            Failed
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Remove button */}
                       <button
-                        onClick={(e) => { e.stopPropagation(); downloadFile(job); }}
-                        className="text-[12px] leading-4 text-link font-mono uppercase hover:underline flex items-center gap-1"
+                        onClick={() => removeFile(job.id)}
+                        className="w-6 h-6 flex items-center justify-center rounded-full text-mute hover:text-ink hover:bg-hairline-soft transition-colors"
+                        aria-label={`Remove ${job.file.name}`}
                       >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                        Download
+                        ×
                       </button>
-                    )}
-                    {job.status === 'failed' && (
-                      <span className="text-[12px] leading-4 text-error font-mono uppercase" title={job.error}>
-                        Failed
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Remove button */}
-                  <button
-                    onClick={() => removeFile(job.id)}
-                    className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-mute hover:text-ink hover:bg-hairline-soft transition-colors"
-                    aria-label={`Remove ${job.file.name}`}
-                  >
-                    ×
-                  </button>
-                </div>
-
-                {/* 3D Preview panel */}
-                {previewFileId === job.id && (
-                  <div className="px-4 pb-4">
-                    <div className="h-[300px]">
-                      <Suspense fallback={
-                        <div className="w-full h-full flex items-center justify-center bg-canvas-elevated border border-hairline rounded-md">
-                          <div className="flex items-center gap-2 text-[12px] text-mute font-mono">
-                            <span className="w-4 h-4 border-2 border-mute border-t-transparent rounded-full animate-spin" />
-                            Loading 3D viewer…
-                          </div>
-                        </div>
-                      }>
-                        <Preview3D file={job.file} format={job.inputFormat} />
-                      </Suspense>
                     </div>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {/* Expandable Dimension Adjuster Panel */}
+                  {job.isAdjusting && job.analysis && currentDim && (
+                    <div className="px-4 py-3 bg-canvas/60 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[13px] font-medium text-ink">Adjust Model Dimensions & Scale</span>
+                          <span className="text-[11px] text-mute font-mono">
+                            (Original: {formatDim(job.analysis.dimensions.x)} × {formatDim(job.analysis.dimensions.y)} × {formatDim(job.analysis.dimensions.z)} mm)
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1.5 text-[12px] text-body cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={job.uniformScale ?? true}
+                              onChange={() => toggleUniformScale(job.id)}
+                              className="rounded border-hairline text-link focus:ring-link w-3.5 h-3.5"
+                            />
+                            <span>Lock aspect ratio</span>
+                          </label>
+                          {scaled && (
+                            <button
+                              type="button"
+                              onClick={() => resetDimensions(job.id)}
+                              className="text-[11px] font-mono text-error hover:underline"
+                            >
+                              Reset
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => toggleAdjusting(job.id)}
+                            className="text-[11px] font-mono px-2 py-0.5 rounded bg-canvas-elevated border border-hairline text-ink hover:bg-hairline-soft"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Quick Presets */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] font-mono uppercase text-mute mr-1">Presets:</span>
+                        {[
+                          { label: '1× (Original)', factor: 1 },
+                          { label: 'Inches → mm (25.4×)', factor: 25.4 },
+                          { label: 'mm → Inches (0.0394×)', factor: 1 / 25.4 },
+                          { label: 'cm → mm (10×)', factor: 10 },
+                          { label: '2×', factor: 2 },
+                          { label: '0.5×', factor: 0.5 },
+                        ].map(preset => {
+                          const isCurrent = Math.abs((job.scaleMultiplier || 1) - preset.factor) < 0.001;
+                          return (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => applyScalePreset(job.id, preset.factor)}
+                              className={`px-2 py-0.5 rounded-sm text-[11px] font-mono border transition-colors ${
+                                isCurrent
+                                  ? 'bg-ink text-white border-ink'
+                                  : 'bg-canvas-elevated border-hairline text-body hover:bg-hairline-soft'
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Coordinate Inputs */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                        <div>
+                          <label className="block text-[11px] font-mono text-mute mb-1">Width (X)</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="any"
+                              value={formatInputVal(currentDim.x)}
+                              onChange={(e) => updateDimension(job.id, 'x', parseFloat(e.target.value))}
+                              className="w-full bg-canvas-elevated border border-hairline rounded-sm px-2.5 py-1 text-[13px] font-mono text-ink pr-8 focus:outline-none focus:ring-1 focus:ring-link"
+                            />
+                            <span className="absolute right-2 top-1.5 text-[11px] font-mono text-mute">mm</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-mono text-mute mb-1">Depth (Y)</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="any"
+                              value={formatInputVal(currentDim.y)}
+                              onChange={(e) => updateDimension(job.id, 'y', parseFloat(e.target.value))}
+                              className="w-full bg-canvas-elevated border border-hairline rounded-sm px-2.5 py-1 text-[13px] font-mono text-ink pr-8 focus:outline-none focus:ring-1 focus:ring-link"
+                            />
+                            <span className="absolute right-2 top-1.5 text-[11px] font-mono text-mute">mm</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-mono text-mute mb-1">Height (Z)</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="any"
+                              value={formatInputVal(currentDim.z)}
+                              onChange={(e) => updateDimension(job.id, 'z', parseFloat(e.target.value))}
+                              className="w-full bg-canvas-elevated border border-hairline rounded-sm px-2.5 py-1 text-[13px] font-mono text-ink pr-8 focus:outline-none focus:ring-1 focus:ring-link"
+                            />
+                            <span className="absolute right-2 top-1.5 text-[11px] font-mono text-mute">mm</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-mono text-mute mb-1">Scale Multiplier</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="any"
+                              value={formatInputVal(job.scaleMultiplier || 1)}
+                              onChange={(e) => applyScalePreset(job.id, parseFloat(e.target.value))}
+                              className="w-full bg-canvas-elevated border border-hairline rounded-sm px-2.5 py-1 text-[13px] font-mono text-ink pr-6 focus:outline-none focus:ring-1 focus:ring-link"
+                            />
+                            <span className="absolute right-2 top-1.5 text-[11px] font-mono text-mute">×</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3D Preview panel */}
+                  {previewFileId === job.id && (
+                    <div className="px-4 py-4">
+                      <div className="h-[300px]">
+                        <Suspense fallback={
+                          <div className="w-full h-full flex items-center justify-center bg-canvas-elevated border border-hairline rounded-md">
+                            <div className="flex items-center gap-2 text-[12px] text-mute font-mono">
+                              <span className="w-4 h-4 border-2 border-mute border-t-transparent rounded-full animate-spin" />
+                              Loading 3D viewer…
+                            </div>
+                          </div>
+                        }>
+                          <Preview3D file={job.file} format={job.inputFormat} />
+                        </Suspense>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Error details */}

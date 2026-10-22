@@ -78,7 +78,7 @@ function getConversionRoute(from: FormatId, to: FormatId): ConversionRoute {
   if (fromInfo.category === 'cad' && toInfo.category === 'mesh') {
     return {
       support: 'lossy',
-      note: 'Tessellation only. Parametric/BREP data is lost — the result is a mesh approximation.',
+      note: 'Tessellation only. Parametric/BREP data is lost - the result is a mesh approximation.',
     };
   }
 
@@ -86,7 +86,7 @@ function getConversionRoute(from: FormatId, to: FormatId): ConversionRoute {
   if (fromInfo.category === 'mesh' && toInfo.category === 'cad') {
     return {
       support: 'lossy',
-      note: 'Creates faceted BREP geometry. This is NOT editable parametric CAD — each triangle becomes a flat face.',
+      note: 'Creates faceted BREP geometry. This is NOT editable parametric CAD - each triangle becomes a flat face.',
     };
   }
 
@@ -95,21 +95,7 @@ function getConversionRoute(from: FormatId, to: FormatId): ConversionRoute {
     return { support: 'full' };
   }
 
-  // Mesh → Mesh — mostly full, a few lossy notes
-  if (from === 'stl' && (to === 'glb' || to === '3mf')) {
-    return {
-      support: 'lossy',
-      note: 'STL has no units — default scale is applied. Binary STL vertex colors are preserved if present.',
-    };
-  }
-
-  if (from === 'obj' && (to === 'glb' || to === '3mf')) {
-    return {
-      support: 'lossy',
-      note: 'OBJ materials (.mtl) are not bundled — material references may be lost.',
-    };
-  }
-
+  // Mesh → Mesh - full support
   return { support: 'full' };
 }
 

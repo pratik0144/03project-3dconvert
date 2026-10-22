@@ -22,6 +22,12 @@ const UNIT_FACTORS: Record<UnitScale, number> = {
   inch: 25.4,
 };
 
+interface CustomScale {
+  x: number;
+  y: number;
+  z: number;
+}
+
 interface ConvertMessage {
   jobId: string;
   type: 'convert';
@@ -29,8 +35,19 @@ interface ConvertMessage {
   inputFormat: FormatId;
   outputFormat: FormatId;
   unitScale: UnitScale;
+  customScale?: CustomScale;
   fileName: string;
 }
+
+interface AnalyzeMessage {
+  jobId: string;
+  type: 'analyze';
+  inputBuffer: ArrayBuffer;
+  inputFormat: FormatId;
+  fileName: string;
+}
+
+type WorkerMessage = ConvertMessage | AnalyzeMessage;
 
 let ocInstance: any = null;
 
@@ -73,8 +90,87 @@ async function getOpenCascade() {
   return ocInstance;
 }
 
-self.onmessage = async (e: MessageEvent<ConvertMessage>) => {
-  const { jobId, inputBuffer, inputFormat, outputFormat, unitScale, fileName } = e.data;
+if (typeof self !== 'undefined') {
+  self.addEventListener('error', (event) => {
+    console.error('Unhandled cad-worker error:', event);
+  });
+
+  self.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled cad-worker rejection:', event.reason);
+  });
+
+  self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
+    try {
+      if (e.data.type === 'analyze') {
+    const { jobId, inputBuffer, inputFormat } = e.data;
+    try {
+      const oc = await getOpenCascade();
+      const tempName = `/analyze_${Date.now()}${getExtension(inputFormat)}`;
+      oc.FS.writeFile(tempName, new Uint8Array(inputBuffer));
+      let shape: any;
+      if (inputFormat === 'step') {
+        shape = readSTEP(oc, tempName);
+      } else if (inputFormat === 'iges') {
+        shape = readIGES(oc, tempName);
+      } else {
+        shape = await meshToBrep(oc, inputBuffer, inputFormat, 'mm');
+      }
+      try { oc.FS.unlink(tempName); } catch {}
+
+      new oc.BRepMesh_IncrementalMesh_2(shape, 0.1, false, 0.5, false);
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      let triCount = 0;
+
+      const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      while (explorer.More()) {
+        const face = oc.TopoDS.Face_1(explorer.Current());
+        const location = new oc.TopLoc_Location_1();
+        const triangulation = oc.BRep_Tool.Triangulation(face, location, 0);
+        if (!triangulation.IsNull()) {
+          const tri = triangulation.get();
+          const nbNodes = tri.NbNodes();
+          triCount += tri.NbTriangles();
+          const trsf = location.Transformation();
+          for (let i = 1; i <= nbNodes; i++) {
+            const p = tri.Node(i).Transformed(trsf);
+            const x = p.X(), y = p.Y(), z = p.Z();
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+            p.delete();
+          }
+        }
+        location.delete();
+        explorer.Next();
+      }
+      explorer.delete();
+      if (shape && shape.delete) shape.delete();
+
+      self.postMessage({
+        jobId,
+        type: 'analyze_done',
+        data: {
+          dimensions: {
+            x: isFinite(maxX - minX) ? Math.max(0, maxX - minX) : 0,
+            y: isFinite(maxY - minY) ? Math.max(0, maxY - minY) : 0,
+            z: isFinite(maxZ - minZ) ? Math.max(0, maxZ - minZ) : 0,
+          },
+          triangles: triCount,
+          isCad: true,
+        },
+      });
+    } catch (err: any) {
+      self.postMessage({
+        jobId,
+        type: 'analyze_error',
+        error: err?.message || 'Failed to analyze CAD model',
+      });
+    }
+    return;
+  }
+
+  const { jobId, inputBuffer, inputFormat, outputFormat, unitScale, customScale, fileName } = e.data;
 
   try {
     const oc = await getOpenCascade();
@@ -102,7 +198,21 @@ self.onmessage = async (e: MessageEvent<ConvertMessage>) => {
       shape = readIGES(oc, `/${inputFileName}`);
     } else {
       // Mesh input -> STEP/IGES: read the mesh, create faceted BREP
-      shape = await meshToBrep(oc, inputBuffer, inputFormat, unitScale);
+      shape = await meshToBrep(oc, inputBuffer, inputFormat, unitScale, customScale);
+    }
+
+    // Apply scale to CAD shape if input was CAD and scale is uniform
+    if ((inputFormat === 'step' || inputFormat === 'iges') && customScale && (customScale.x !== 1 || customScale.y !== 1 || customScale.z !== 1)) {
+      if (customScale.x === customScale.y && customScale.y === customScale.z) {
+        const trsf = new oc.gp_Trsf_1();
+        trsf.SetScale(new oc.gp_Pnt_3(0, 0, 0), customScale.x);
+        const transformer = new oc.BRepBuilderAPI_Transform_2(shape, trsf, true);
+        const scaledShape = transformer.Shape();
+        if (shape && shape.delete) shape.delete();
+        shape = scaledShape;
+        transformer.delete();
+        trsf.delete();
+      }
     }
 
     // Write output
@@ -117,7 +227,7 @@ self.onmessage = async (e: MessageEvent<ConvertMessage>) => {
       mimeType = 'model/iges';
     } else {
       // CAD -> Mesh: tessellate the shape
-      resultBuffer = await brepToMesh(oc, shape, outputFormat);
+      resultBuffer = await brepToMesh(oc, shape, outputFormat, customScale);
       mimeType = getMimeType(outputFormat);
     }
 
@@ -139,7 +249,19 @@ self.onmessage = async (e: MessageEvent<ConvertMessage>) => {
       error: err?.message || 'CAD conversion failed',
     });
   }
+} catch (topErr: any) {
+  const jobId = (e.data as any)?.jobId;
+  const isAnalyze = (e.data as any)?.type === 'analyze';
+  if (jobId) {
+    self.postMessage({
+      jobId,
+      type: isAnalyze ? 'analyze_error' : 'error',
+      error: topErr?.message || 'Unexpected CAD worker error occurred',
+    });
+  }
+}
 };
+}
 
 /* ────────── STEP / IGES Readers with fallback strategies ────────── */
 
@@ -189,7 +311,7 @@ function readSTEP(oc: any, filePath: string): any {
       if (nbShapes === 1) {
         try { shape = reader.Shape(1); } catch { /* fallback */ }
       } else {
-        // Multiple shapes — combine into a compound
+        // Multiple shapes - combine into a compound
         try {
           const builder = new oc.BRep_Builder();
           const compound = new oc.TopoDS_Compound();
@@ -333,12 +455,95 @@ function writeIGES(oc: any, shape: any): ArrayBuffer {
 /* ────────── 3MF manual parser (DOMParser unavailable in Workers) ────────── */
 
 /**
+ * Weld identical vertices (within tolerance) and eliminate degenerate triangles.
+ * Returns an indexed BufferGeometry with unique positions and vertex normals.
+ */
+export function weldGeometry(geometry: THREE.BufferGeometry, tolerance = 1e-5): THREE.BufferGeometry {
+  const pos = geometry.getAttribute('position');
+  if (!pos) return geometry;
+
+  const idx = geometry.getIndex();
+  const triCount = idx ? idx.count / 3 : pos.count / 3;
+
+  const factor = tolerance > 0 ? 1 / tolerance : 100000;
+  const vertexMap = new Map<string, number>();
+  const tempPositions: number[] = [];
+  const rawTriangles: [number, number, number][] = [];
+
+  function getVertexIndex(x: number, y: number, z: number): number {
+    const qx = Math.round(x * factor) / factor;
+    const qy = Math.round(y * factor) / factor;
+    const qz = Math.round(z * factor) / factor;
+    const key = `${qx}_${qy}_${qz}`;
+    let vIndex = vertexMap.get(key);
+    if (vIndex === undefined) {
+      vIndex = tempPositions.length / 3;
+      vertexMap.set(key, vIndex);
+      tempPositions.push(x, y, z);
+    }
+    return vIndex;
+  }
+
+  for (let i = 0; i < triCount; i++) {
+    const i0 = idx ? idx.getX(i * 3) : i * 3;
+    const i1 = idx ? idx.getX(i * 3 + 1) : i * 3 + 1;
+    const i2 = idx ? idx.getX(i * 3 + 2) : i * 3 + 2;
+
+    const x0 = pos.getX(i0), y0 = pos.getY(i0), z0 = pos.getZ(i0);
+    const x1 = pos.getX(i1), y1 = pos.getY(i1), z1 = pos.getZ(i1);
+    const x2 = pos.getX(i2), y2 = pos.getY(i2), z2 = pos.getZ(i2);
+
+    const v0 = getVertexIndex(x0, y0, z0);
+    const v1 = getVertexIndex(x1, y1, z1);
+    const v2 = getVertexIndex(x2, y2, z2);
+
+    // Skip degenerate triangles where vertices are identical
+    if (v0 === v1 || v1 === v2 || v2 === v0) continue;
+
+    rawTriangles.push([v0, v1, v2]);
+  }
+
+  // Remap indices to keep only vertices that belong to valid triangles
+  const remap = new Int32Array(tempPositions.length / 3).fill(-1);
+  const finalPositions: number[] = [];
+  const finalIndices: number[] = [];
+
+  for (const [v0, v1, v2] of rawTriangles) {
+    let r0 = remap[v0];
+    if (r0 === -1) {
+      r0 = finalPositions.length / 3;
+      remap[v0] = r0;
+      finalPositions.push(tempPositions[v0 * 3], tempPositions[v0 * 3 + 1], tempPositions[v0 * 3 + 2]);
+    }
+    let r1 = remap[v1];
+    if (r1 === -1) {
+      r1 = finalPositions.length / 3;
+      remap[v1] = r1;
+      finalPositions.push(tempPositions[v1 * 3], tempPositions[v1 * 3 + 1], tempPositions[v1 * 3 + 2]);
+    }
+    let r2 = remap[v2];
+    if (r2 === -1) {
+      r2 = finalPositions.length / 3;
+      remap[v2] = r2;
+      finalPositions.push(tempPositions[v2 * 3], tempPositions[v2 * 3 + 1], tempPositions[v2 * 3 + 2]);
+    }
+    finalIndices.push(r0, r1, r2);
+  }
+
+  const result = new THREE.BufferGeometry();
+  result.setAttribute('position', new THREE.Float32BufferAttribute(finalPositions, 3));
+  result.setIndex(finalIndices);
+  result.computeVertexNormals();
+  return result;
+}
+
+/**
  * Parse a 3MF archive without DOMParser by unzipping with fflate
  * and extracting vertices/triangles via regex from all model XML files.
  * Supports standard single-model files, multi-object models, and
  * Bambu Studio / PrusaSlicer assemblies (3D/Objects/*.model).
  */
-function parse3MFBuffer(buffer: ArrayBuffer): THREE.Group {
+export function parse3MFBuffer(buffer: ArrayBuffer): THREE.Group {
   const archive = unzipSync(new Uint8Array(buffer));
   const group = new THREE.Group();
 
@@ -386,8 +591,9 @@ function parse3MFBuffer(buffer: ArrayBuffer): THREE.Group {
         if (indices.length > 0) geom.setIndex(indices);
         geom.computeVertexNormals();
 
+        const welded = weldGeometry(geom);
         const mat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-        group.add(new THREE.Mesh(geom, mat));
+        group.add(new THREE.Mesh(welded, mat));
       }
     }
 
@@ -416,7 +622,8 @@ function parse3MFBuffer(buffer: ArrayBuffer): THREE.Group {
         geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
         if (indices.length > 0) geom.setIndex(indices);
         geom.computeVertexNormals();
-        group.add(new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0xcccccc })));
+        const welded = weldGeometry(geom);
+        group.add(new THREE.Mesh(welded, new THREE.MeshStandardMaterial({ color: 0xcccccc })));
       }
     }
   }
@@ -519,19 +726,17 @@ function extractSceneGeometry(scene: THREE.Object3D): THREE.BufferGeometry {
  * Convert a mesh (STL/OBJ/GLB/3MF) buffer into an OpenCascade TopoDS_Shape.
  *
  * Tries multiple strategies in order:
- * 1. StlAPI_Reader — cleanest, OC builds its own proper shape from STL
- * 2. RWStl + BRep_Builder::MakeFace — reads triangulation, attaches to a face
- * 3. Manual BREP — creates individual planar faces from triangles, then sews
+ * 1. StlAPI_Reader - cleanest, OC builds its own proper shape from STL
+ * 2. RWStl + BRep_Builder::MakeFace - reads triangulation, attaches to a face
+ * 3. Manual BREP - creates individual planar faces from triangles, then sews
  */
-async function meshToBrep(oc: any, buffer: ArrayBuffer, format: FormatId, unitScale: UnitScale): Promise<any> {
+export async function meshToBrep(oc: any, buffer: ArrayBuffer, format: FormatId, unitScale: UnitScale, customScale?: CustomScale): Promise<any> {
   // Parse mesh using three.js to get BufferGeometry
   let geometry: THREE.BufferGeometry;
 
   if (format === 'stl') {
     const loader = new STLLoader();
     geometry = loader.parse(buffer);
-    const factor = UNIT_FACTORS[unitScale];
-    if (factor !== 1) geometry.scale(factor, factor, factor);
   } else if (format === 'obj') {
     const loader = new OBJLoader();
     const text = new TextDecoder().decode(buffer);
@@ -544,12 +749,23 @@ async function meshToBrep(oc: any, buffer: ArrayBuffer, format: FormatId, unitSc
     });
     geometry = extractSceneGeometry(gltf.scene);
   } else if (format === '3mf') {
-    // Custom parser — DOMParser is not available in Web Workers
+    // Custom parser - DOMParser is not available in Web Workers
     const group = parse3MFBuffer(buffer);
     geometry = extractSceneGeometry(group);
   } else {
     throw new Error(`Cannot convert ${format} to BREP`);
   }
+
+  // Apply custom scale if provided, or fallback to unit scale for STL
+  if (customScale && (customScale.x !== 1 || customScale.y !== 1 || customScale.z !== 1)) {
+    geometry.scale(customScale.x, customScale.y, customScale.z);
+  } else if (format === 'stl') {
+    const factor = UNIT_FACTORS[unitScale];
+    if (factor !== 1) geometry.scale(factor, factor, factor);
+  }
+
+  // Weld identical vertices and eliminate degenerate triangles
+  geometry = weldGeometry(geometry);
 
   // Pre-flight density check: CAD B-Rep cannot handle >50K faces in 32-bit WASM
   const triCount = geometry.getIndex()
@@ -582,7 +798,7 @@ async function meshToBrep(oc: any, buffer: ArrayBuffer, format: FormatId, unitSc
 
   let shape: any = null;
 
-  // Strategy 1: StlAPI_Reader — produces proper shapes that round-trip through STEP/IGES
+  // Strategy 1: StlAPI_Reader - produces proper shapes that round-trip through STEP/IGES
   if (!shape || shape.IsNull?.()) {
     try {
       const Reader = oc.StlAPI_Reader_1 || oc.StlAPI_Reader;
@@ -595,7 +811,7 @@ async function meshToBrep(oc: any, buffer: ArrayBuffer, format: FormatId, unitSc
         }
         if (stlReader.delete) stlReader.delete();
       }
-    } catch { /* StlAPI_Reader not available — try next */ }
+    } catch { /* StlAPI_Reader not available - try next */ }
   }
 
   // Strategy 2: RWStl to read triangulation, then attach to a face via BRep_Builder
@@ -641,10 +857,10 @@ async function meshToBrep(oc: any, buffer: ArrayBuffer, format: FormatId, unitSc
           shape = compound;
         }
       }
-    } catch { /* RWStl approach not available — try next */ }
+    } catch { /* RWStl approach not available - try next */ }
   }
 
-  // Strategy 3: Manual BREP — build individual planar faces from triangles
+  // Strategy 3: Manual BREP - build individual planar faces from triangles
   if (!shape || shape.IsNull?.()) {
     shape = buildManualBrep(oc, geometry);
   }
@@ -681,7 +897,7 @@ function buildManualBrep(oc: any, geometry: THREE.BufferGeometry): any {
     try {
       // MakePolygon_3 = (P1, P2, P3, Close) for triangular wire
       const wire = new oc.BRepBuilderAPI_MakePolygon_3(p1, p2, p3, true).Wire();
-      // onlyPlane=true forces Geom_Plane surface — better STEP/IGES compatibility
+      // onlyPlane=true forces Geom_Plane surface - better STEP/IGES compatibility
       const face = new oc.BRepBuilderAPI_MakeFace_15(wire, true).Face();
       builder.Add(compound, face);
     } catch {
@@ -738,7 +954,7 @@ async function gltfResultToArrayBuffer(result: unknown): Promise<ArrayBuffer> {
   return new TextEncoder().encode(json).buffer as ArrayBuffer;
 }
 
-async function brepToMesh(oc: any, shape: any, outputFormat: FormatId): Promise<ArrayBuffer> {
+export async function brepToMesh(oc: any, shape: any, outputFormat: FormatId, customScale?: CustomScale): Promise<ArrayBuffer> {
   // Tessellate the shape
   new oc.BRepMesh_IncrementalMesh_2(shape, 0.1, false, 0.5, false);
 
@@ -796,11 +1012,18 @@ async function brepToMesh(oc: any, shape: any, outputFormat: FormatId): Promise<
     throw new Error('No geometry could be extracted from the CAD file');
   }
 
-  // Build three.js geometry
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
+  // Build three.js geometry and weld shared boundary vertices between CAD faces
+  const rawGeometry = new THREE.BufferGeometry();
+  rawGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  rawGeometry.setIndex(indices);
+  rawGeometry.computeVertexNormals();
+
+  const geometry = weldGeometry(rawGeometry);
+
+  // If customScale was non-uniform (uniform scale was already applied to B-Rep shape)
+  if (customScale && (customScale.x !== customScale.y || customScale.y !== customScale.z)) {
+    geometry.scale(customScale.x, customScale.y, customScale.z);
+  }
 
   const material = new THREE.MeshStandardMaterial({ color: 0xcccccc });
   const mesh = new THREE.Mesh(geometry, material);
@@ -839,9 +1062,10 @@ async function brepToMesh(oc: any, shape: any, outputFormat: FormatId): Promise<
       );
     });
   } else if (outputFormat === '3mf') {
-    // Build 3MF using statically imported fflate
+    // Build 3MF with welded vertices and shared triangle indices
     const pos = geometry.getAttribute('position');
     const idx = geometry.getIndex();
+    const triCount = idx ? idx.count / 3 : pos.count / 3;
 
     let verticesXml = '';
     let trianglesXml = '';
@@ -851,8 +1075,8 @@ async function brepToMesh(oc: any, shape: any, outputFormat: FormatId): Promise<
     }
 
     if (idx) {
-      for (let i = 0; i < idx.count; i += 3) {
-        trianglesXml += `        <triangle v1="${idx.getX(i)}" v2="${idx.getX(i+1)}" v3="${idx.getX(i+2)}" />\n`;
+      for (let i = 0; i < triCount; i++) {
+        trianglesXml += `        <triangle v1="${idx.getX(i * 3)}" v2="${idx.getX(i * 3 + 1)}" v3="${idx.getX(i * 3 + 2)}" />\n`;
       }
     }
 
