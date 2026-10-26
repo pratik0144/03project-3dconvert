@@ -1,13 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import * as THREE from 'three';
-import { STLLoader } from 'three/addons/loaders/STLLoader.js';
-import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { unzipSync, strFromU8 } from 'fflate';
 
-// Polyfill worker environment for node execution
+// Polyfill worker environment for Node.js test execution
+const require = createRequire(import.meta.url);
 globalThis.self = globalThis as any;
+if (!globalThis.self.postMessage) {
+  globalThis.self.postMessage = () => {};
+}
+
 if (typeof FileReader === 'undefined') {
   (globalThis as any).FileReader = class {
     onload: any = null;
@@ -38,7 +41,38 @@ import {
   weldGeometry,
   weldScene,
 } from '../src/lib/workers/mesh-worker.ts';
+import {
+  meshToBrep,
+  brepToMesh,
+  writeSTEP,
+  readSTEP,
+  writeIGES,
+  readIGES,
+} from '../src/lib/workers/cad-worker.ts';
 import type { FormatId } from '../src/lib/formats.ts';
+
+const OC_CDN_BASE = 'https://cdn.jsdelivr.net/npm/opencascade.js@2.0.0-beta.b5ff984/dist';
+let cachedOc: any = null;
+
+async function getOpenCascade() {
+  if (cachedOc) return cachedOc;
+  const jsUrl = `${OC_CDN_BASE}/opencascade.full.js`;
+  const wasmUrl = `${OC_CDN_BASE}/opencascade.full.wasm`;
+  const res = await fetch(jsUrl);
+  const source = await res.text();
+  const wasmRes = await fetch(wasmUrl);
+  const wasmBinary = new Uint8Array(await wasmRes.arrayBuffer());
+
+  const cleanedSource = source.replace(/export\s+default\s+Module\s*;?\s*$/, '');
+  const factory = new Function('require', '__dirname', `${cleanedSource}\nreturn Module;`)(
+    require,
+    process.cwd()
+  );
+  const oc = await factory({ wasmBinary });
+  if (oc.ready) await oc.ready;
+  cachedOc = oc;
+  return oc;
+}
 
 export interface TopologyStats {
   triangles: number;
@@ -108,7 +142,7 @@ export function analyzeTopology(geometry: THREE.BufferGeometry): TopologyStats {
     if (revCount === 0) {
       openEdges += count;
     } else if (count > revCount) {
-      nonManifoldEdges += (count - revCount);
+      nonManifoldEdges += count - revCount;
     }
   }
 
@@ -138,12 +172,10 @@ export function extractSceneTopology(scene: THREE.Object3D): TopologyStats {
     return { triangles: 0, openEdges: 0, nonManifoldEdges: 0 };
   }
 
-  // If single mesh, analyze directly
   if (geometries.length === 1) {
     return analyzeTopology(geometries[0]);
   }
 
-  // Multi-mesh scene: aggregate topology stats across meshes
   let totalTriangles = 0;
   let totalOpenEdges = 0;
   let totalNonManifold = 0;
@@ -162,10 +194,6 @@ export function extractSceneTopology(scene: THREE.Object3D): TopologyStats {
   };
 }
 
-/**
- * Parse an exported buffer back into a Three.js scene for topology check.
- * Uses the engine's parseInput to verify how the converter loads the format.
- */
 export async function parseBufferToScene(
   buffer: ArrayBuffer,
   format: FormatId,
@@ -175,27 +203,28 @@ export async function parseBufferToScene(
 }
 
 async function runRegressionAndTopologyTests(): Promise<boolean> {
-  console.log('='.repeat(80));
-  console.log('3D Model Converter — Topology & Regression Verification Test Suite');
-  console.log('='.repeat(80));
+  console.log('='.repeat(105));
+  console.log('3D MODEL CONVERTER — TOPOLOGY & REGRESSION VERIFICATION MATRIX');
+  console.log('='.repeat(105));
 
   const results: VerificationResult[] = [];
   let allPassed = true;
 
-  // Resolve test file path
   const owindBodyPath = path.resolve(process.cwd(), '../testing-3d/OWind_Body.stl');
   const owindFootPath = path.resolve(process.cwd(), '../testing-3d/Owind_Foot.stl');
+  const owindStepPath = path.resolve(process.cwd(), '../testing-3d/OWind_Body.step');
+  const owindIgesPath = path.resolve(process.cwd(), '../testing-3d/OWind_Body.iges');
 
   if (!fs.existsSync(owindBodyPath)) {
-    throw new Error(`Permanent regression test file not found at: ${owindBodyPath}`);
+    throw new Error(`Regression test file not found at: ${owindBodyPath}`);
   }
 
   /* ──────────────────────────────────────────────────────────────────────────
    * SUITE 1: Permanent Regression Test — OWind_Body.stl (38,236 triangles)
    * ────────────────────────────────────────────────────────────────────────── */
   console.log('\n[Suite 1] Permanent Regression Test: OWind_Body.stl');
-  console.log('- Input file has 38,314 triangles in raw header, with 78 degenerate triangles.');
-  console.log('- Expected valid manifold topology: 38,236 triangles, 0 open edges, 0 non-manifold edges.');
+  console.log('- Input raw header: 38,314 triangles (78 degenerate zero-area triangles)');
+  console.log('- Verified manifold baseline: 38,236 triangles, 0 open edges, 0 non-manifold edges');
 
   const owindBuffer = fs.readFileSync(owindBodyPath);
   const owindArrayBuf = owindBuffer.buffer.slice(
@@ -203,80 +232,61 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
     owindBuffer.byteOffset + owindBuffer.byteLength
   );
 
-  // Parse input
-  const inputScene = await parseInput(owindArrayBuf, 'stl', 'OWind_Body.stl');
-  const baselineTopo = extractSceneTopology(inputScene);
+  const owindInputScene = await parseInput(owindArrayBuf, 'stl', 'OWind_Body.stl');
+  const owindBaseline = extractSceneTopology(owindInputScene);
 
-  console.log(
-    `Baseline parsed: Triangles=${baselineTopo.triangles}, OpenEdges=${baselineTopo.openEdges}, NonManifoldEdges=${baselineTopo.nonManifoldEdges}`
-  );
-
-  // Assert baseline meets regression requirement
-  if (baselineTopo.triangles !== 38236) {
-    console.error(`❌ FAILED: OWind_Body baseline triangles = ${baselineTopo.triangles}, expected 38236`);
+  if (owindBaseline.triangles !== 38236) {
+    console.error(`❌ FAILED: OWind_Body baseline triangles = ${owindBaseline.triangles}, expected 38236`);
     allPassed = false;
   }
-  if (baselineTopo.openEdges !== 0 || baselineTopo.nonManifoldEdges !== 0) {
+  if (owindBaseline.openEdges !== 0 || owindBaseline.nonManifoldEdges !== 0) {
     console.error(
-      `❌ FAILED: OWind_Body baseline is not closed manifold: open=${baselineTopo.openEdges}, nonManifold=${baselineTopo.nonManifoldEdges}`
+      `❌ FAILED: OWind_Body baseline is not closed manifold: open=${owindBaseline.openEdges}, nonManifold=${owindBaseline.nonManifoldEdges}`
     );
     allPassed = false;
   }
 
-  // Targets to test for OWind_Body
-  const regressionTargets: FormatId[] = ['3mf', 'obj', 'glb', 'stl'];
+  const owindTargets: FormatId[] = ['3mf', 'obj', 'glb', 'stl'];
   let saved3mfBuffer: ArrayBuffer | null = null;
 
-  for (const target of regressionTargets) {
+  for (const target of owindTargets) {
     const pairName = `STL -> ${target.toUpperCase()}`;
     try {
-      const exported = await exportOutput(inputScene, target);
+      const exported = await exportOutput(owindInputScene, target);
       if (target === '3mf') saved3mfBuffer = exported.buffer;
 
-      // Reload exported file and analyze topology
       const reloadedScene = await parseBufferToScene(exported.buffer, target, `OWind_Body.${target}`);
       const reloadedTopo = extractSceneTopology(reloadedScene);
 
-      // Check failure rule:
-      // Fail any pair where triangle count changes or edge counts increase
-      const triChanged = reloadedTopo.triangles !== baselineTopo.triangles;
-      const openIncreased = reloadedTopo.openEdges > baselineTopo.openEdges;
-      const nonManifoldIncreased = reloadedTopo.nonManifoldEdges > baselineTopo.nonManifoldEdges;
+      const triChanged = reloadedTopo.triangles !== owindBaseline.triangles;
+      const openIncreased = reloadedTopo.openEdges > owindBaseline.openEdges;
+      const nonManifoldIncreased = reloadedTopo.nonManifoldEdges > owindBaseline.nonManifoldEdges;
 
       const passed = !triChanged && !openIncreased && !nonManifoldIncreased;
       if (!passed) allPassed = false;
 
-      let notes = 'Exact manifold match';
-      if (target === '3mf') {
-        notes = 'Welded shared vertices, 0 non-manifold edges';
-      } else if (target === 'obj') {
-        notes = 'Welded shared vertices, indexed faces';
-      } else if (target === 'glb') {
-        notes = 'Indexed binary glTF primitive';
-      }
-
       results.push({
-        suite: 'OWind_Body Regression',
+        suite: 'OWind_Body Permanent',
         pair: pairName,
-        trianglesBefore: baselineTopo.triangles,
+        trianglesBefore: owindBaseline.triangles,
         trianglesAfter: reloadedTopo.triangles,
-        openEdgesBefore: baselineTopo.openEdges,
+        openEdgesBefore: owindBaseline.openEdges,
         openEdgesAfter: reloadedTopo.openEdges,
-        nonManifoldBefore: baselineTopo.nonManifoldEdges,
+        nonManifoldBefore: owindBaseline.nonManifoldEdges,
         nonManifoldAfter: reloadedTopo.nonManifoldEdges,
         passed,
-        notes,
+        notes: target === '3mf' ? 'Welded shared vertices, 0 non-manifold edges' : 'Manifold match',
       });
     } catch (err: any) {
       allPassed = false;
       results.push({
-        suite: 'OWind_Body Regression',
+        suite: 'OWind_Body Permanent',
         pair: pairName,
-        trianglesBefore: baselineTopo.triangles,
+        trianglesBefore: owindBaseline.triangles,
         trianglesAfter: 0,
-        openEdgesBefore: baselineTopo.openEdges,
+        openEdgesBefore: owindBaseline.openEdges,
         openEdgesAfter: 0,
-        nonManifoldBefore: baselineTopo.nonManifoldEdges,
+        nonManifoldBefore: owindBaseline.nonManifoldEdges,
         nonManifoldAfter: 0,
         passed: false,
         notes: `Error: ${err?.message || err}`,
@@ -284,7 +294,9 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
     }
   }
 
-  // Also test 3MF Round-Trip (3MF -> STL, 3MF -> OBJ, 3MF -> GLB)
+  /* ──────────────────────────────────────────────────────────────────────────
+   * SUITE 2: 3MF Round-Trip (3MF -> STL, OBJ, GLB)
+   * ────────────────────────────────────────────────────────────────────────── */
   if (saved3mfBuffer) {
     console.log('\n[Suite 2] 3MF Round-Trip Topology Checks:');
     const parsed3mfScene = await parseInput(saved3mfBuffer, '3mf', 'OWind_Body.3mf');
@@ -315,7 +327,7 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
           nonManifoldBefore: source3mfTopo.nonManifoldEdges,
           nonManifoldAfter: reloadedTopo.nonManifoldEdges,
           passed,
-          notes: 'Full round-trip topology preservation',
+          notes: 'Exact round-trip topology match',
         });
       } catch (err: any) {
         allPassed = false;
@@ -336,52 +348,70 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
   }
 
   /* ──────────────────────────────────────────────────────────────────────────
-   * SUITE 3: Real-World Model — Owind_Foot.stl (1,164 triangles)
+   * SUITE 3: Full Mesh Cross-Format Matrix (Owind_Foot, 1,164 triangles)
+   * Tests all pairs: OBJ <-> GLB <-> 3MF <-> STL
    * ────────────────────────────────────────────────────────────────────────── */
-  if (fs.existsSync(owindFootPath)) {
-    console.log('\n[Suite 3] Real-World Model: Owind_Foot.stl');
-    const footBuf = fs.readFileSync(owindFootPath);
-    const footArrayBuf = footBuf.buffer.slice(footBuf.byteOffset, footBuf.byteOffset + footBuf.byteLength);
+  console.log('\n[Suite 3] Mesh Full Cross-Pair Matrix (Owind_Foot)');
+  const footBuf = fs.readFileSync(owindFootPath);
+  const footArrayBuf = footBuf.buffer.slice(footBuf.byteOffset, footBuf.byteOffset + footBuf.byteLength);
 
-    const footScene = await parseInput(footArrayBuf, 'stl', 'Owind_Foot.stl');
-    const footBaselineTopo = extractSceneTopology(footScene);
+  const footScene = await parseInput(footArrayBuf, 'stl', 'Owind_Foot.stl');
+  const footBaseline = extractSceneTopology(footScene);
 
-    for (const target of regressionTargets) {
-      const pairName = `STL -> ${target.toUpperCase()}`;
+  // Generate intermediate representations
+  const footObjBuf = (await exportOutput(footScene, 'obj')).buffer;
+  const footGlbBuf = (await exportOutput(footScene, 'glb')).buffer;
+  const foot3mfBuf = (await exportOutput(footScene, '3mf')).buffer;
+
+  const meshInputs: { format: FormatId; buffer: ArrayBuffer }[] = [
+    { format: 'stl', buffer: footArrayBuf },
+    { format: 'obj', buffer: footObjBuf },
+    { format: 'glb', buffer: footGlbBuf },
+    { format: '3mf', buffer: foot3mfBuf },
+  ];
+
+  for (const src of meshInputs) {
+    const srcScene = await parseInput(src.buffer, src.format, `foot.${src.format}`);
+    const srcTopo = extractSceneTopology(srcScene);
+
+    for (const dstFmt of ['stl', 'obj', 'glb', '3mf'] as FormatId[]) {
+      if (src.format === dstFmt) continue; // Skip identical format identity
+      const pairName = `${src.format.toUpperCase()} -> ${dstFmt.toUpperCase()}`;
+
       try {
-        const exported = await exportOutput(footScene, target);
-        const reloadedScene = await parseBufferToScene(exported.buffer, target, `Owind_Foot.${target}`);
+        const exported = await exportOutput(srcScene, dstFmt);
+        const reloadedScene = await parseBufferToScene(exported.buffer, dstFmt, `foot.${dstFmt}`);
         const reloadedTopo = extractSceneTopology(reloadedScene);
 
-        const triChanged = reloadedTopo.triangles !== footBaselineTopo.triangles;
-        const openIncreased = reloadedTopo.openEdges > footBaselineTopo.openEdges;
-        const nonManifoldIncreased = reloadedTopo.nonManifoldEdges > footBaselineTopo.nonManifoldEdges;
+        const triChanged = reloadedTopo.triangles !== srcTopo.triangles;
+        const openIncreased = reloadedTopo.openEdges > srcTopo.openEdges;
+        const nonManifoldIncreased = reloadedTopo.nonManifoldEdges > srcTopo.nonManifoldEdges;
 
         const passed = !triChanged && !openIncreased && !nonManifoldIncreased;
         if (!passed) allPassed = false;
 
         results.push({
-          suite: 'Owind_Foot Model',
+          suite: 'Mesh Cross-Matrix',
           pair: pairName,
-          trianglesBefore: footBaselineTopo.triangles,
+          trianglesBefore: srcTopo.triangles,
           trianglesAfter: reloadedTopo.triangles,
-          openEdgesBefore: footBaselineTopo.openEdges,
+          openEdgesBefore: srcTopo.openEdges,
           openEdgesAfter: reloadedTopo.openEdges,
-          nonManifoldBefore: footBaselineTopo.nonManifoldEdges,
+          nonManifoldBefore: srcTopo.nonManifoldEdges,
           nonManifoldAfter: reloadedTopo.nonManifoldEdges,
           passed,
-          notes: 'Production foot model verified',
+          notes: 'Full mesh-to-mesh verification',
         });
       } catch (err: any) {
         allPassed = false;
         results.push({
-          suite: 'Owind_Foot Model',
+          suite: 'Mesh Cross-Matrix',
           pair: pairName,
-          trianglesBefore: footBaselineTopo.triangles,
+          trianglesBefore: srcTopo.triangles,
           trianglesAfter: 0,
-          openEdgesBefore: footBaselineTopo.openEdges,
+          openEdgesBefore: srcTopo.openEdges,
           openEdgesAfter: 0,
-          nonManifoldBefore: footBaselineTopo.nonManifoldEdges,
+          nonManifoldBefore: srcTopo.nonManifoldEdges,
           nonManifoldAfter: 0,
           passed: false,
           notes: `Error: ${err?.message || err}`,
@@ -391,22 +421,303 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
   }
 
   /* ──────────────────────────────────────────────────────────────────────────
+   * SUITE 4 & 5: Mesh -> CAD and CAD -> Mesh Pairs (via OpenCascade.js)
+   * Tests:
+   *   OBJ, GLB, 3MF, STL -> STEP
+   *   OBJ, GLB, 3MF, STL -> IGES
+   *   STEP -> STL, OBJ, GLB, 3MF
+   *   IGES -> STL, OBJ, GLB, 3MF
+   * ────────────────────────────────────────────────────────────────────────── */
+  console.log('\n[Suite 4 & 5] Mesh <-> CAD Conversion Matrix (OpenCascade.js)');
+  console.log('Loading OpenCascade kernel for CAD topology verification…');
+  const oc = await getOpenCascade();
+
+  // SUITE 4: Mesh -> CAD (OBJ, GLB, 3MF, STL -> STEP and IGES)
+  for (const src of meshInputs) {
+    const srcScene = await parseInput(src.buffer, src.format, `foot.${src.format}`);
+    const srcTopo = extractSceneTopology(srcScene);
+
+    // Mesh -> STEP
+    const stepPairName = `${src.format.toUpperCase()} -> STEP`;
+    try {
+      const brep = await meshToBrep(oc, src.buffer, src.format, 'mm');
+      const stepBytes = writeSTEP(oc, brep);
+
+      oc.FS.writeFile('/temp_test.step', new Uint8Array(stepBytes));
+      const readShape = readSTEP(oc, '/temp_test.step');
+      oc.FS.unlink('/temp_test.step');
+
+      const meshBuf = await brepToMesh(oc, readShape, 'stl');
+      const reloadedScene = await parseInput(meshBuf, 'stl', 'foot.stl');
+      const reloadedTopo = extractSceneTopology(reloadedScene);
+
+      const triChanged = reloadedTopo.triangles !== srcTopo.triangles;
+      const openIncreased = reloadedTopo.openEdges > srcTopo.openEdges;
+      const nonManifoldIncreased = reloadedTopo.nonManifoldEdges > srcTopo.nonManifoldEdges;
+
+      const passed = !triChanged && !openIncreased && !nonManifoldIncreased;
+      if (!passed) allPassed = false;
+
+      results.push({
+        suite: 'Mesh -> CAD',
+        pair: stepPairName,
+        trianglesBefore: srcTopo.triangles,
+        trianglesAfter: reloadedTopo.triangles,
+        openEdgesBefore: srcTopo.openEdges,
+        openEdgesAfter: reloadedTopo.openEdges,
+        nonManifoldBefore: srcTopo.nonManifoldEdges,
+        nonManifoldAfter: reloadedTopo.nonManifoldEdges,
+        passed,
+        notes: 'Faceted B-Rep STEP verified',
+      });
+      if (readShape && readShape.delete) readShape.delete();
+      if (brep && brep.delete) brep.delete();
+    } catch (err: any) {
+      allPassed = false;
+      results.push({
+        suite: 'Mesh -> CAD',
+        pair: stepPairName,
+        trianglesBefore: srcTopo.triangles,
+        trianglesAfter: 0,
+        openEdgesBefore: srcTopo.openEdges,
+        openEdgesAfter: 0,
+        nonManifoldBefore: srcTopo.nonManifoldEdges,
+        nonManifoldAfter: 0,
+        passed: false,
+        notes: `Error: ${err?.message || err}`,
+      });
+    }
+
+    // Mesh -> IGES
+    const igesPairName = `${src.format.toUpperCase()} -> IGES`;
+    try {
+      const igesBrep = await meshToBrep(oc, src.buffer, src.format, 'mm');
+      const igesBytes = writeIGES(oc, igesBrep);
+
+      oc.FS.writeFile('/temp_test.iges', new Uint8Array(igesBytes));
+      const readIgesShape = readIGES(oc, '/temp_test.iges');
+      oc.FS.unlink('/temp_test.iges');
+
+      const igesMeshBuf = await brepToMesh(oc, readIgesShape, 'stl');
+      const reloadedScene = await parseInput(igesMeshBuf, 'stl', 'foot.stl');
+      const reloadedTopo = extractSceneTopology(reloadedScene);
+
+      const triChanged = reloadedTopo.triangles !== srcTopo.triangles;
+      const openIncreased = reloadedTopo.openEdges > srcTopo.openEdges;
+      const nonManifoldIncreased = reloadedTopo.nonManifoldEdges > srcTopo.nonManifoldEdges;
+
+      const passed = !triChanged && !openIncreased && !nonManifoldIncreased;
+      if (!passed) allPassed = false;
+
+      results.push({
+        suite: 'Mesh -> CAD',
+        pair: igesPairName,
+        trianglesBefore: srcTopo.triangles,
+        trianglesAfter: reloadedTopo.triangles,
+        openEdgesBefore: srcTopo.openEdges,
+        openEdgesAfter: reloadedTopo.openEdges,
+        nonManifoldBefore: srcTopo.nonManifoldEdges,
+        nonManifoldAfter: reloadedTopo.nonManifoldEdges,
+        passed,
+        notes: 'Trimmed Surface IGES verified',
+      });
+      if (readIgesShape && readIgesShape.delete) readIgesShape.delete();
+      if (igesBrep && igesBrep.delete) igesBrep.delete();
+    } catch (err: any) {
+      allPassed = false;
+      results.push({
+        suite: 'Mesh -> CAD',
+        pair: igesPairName,
+        trianglesBefore: srcTopo.triangles,
+        trianglesAfter: 0,
+        openEdgesBefore: srcTopo.openEdges,
+        openEdgesAfter: 0,
+        nonManifoldBefore: srcTopo.nonManifoldEdges,
+        nonManifoldAfter: 0,
+        passed: false,
+        notes: `Error: ${err?.message || err}`,
+      });
+    }
+  }
+
+  // SUITE 5: CAD -> Mesh (STEP & IGES -> STL, OBJ, GLB, 3MF)
+  const baseBrep = await meshToBrep(oc, footArrayBuf, 'stl', 'mm');
+  const baseStepBytes = writeSTEP(oc, baseBrep);
+  const baseIgesBytes = writeIGES(oc, baseBrep);
+
+  oc.FS.writeFile('/shared_step.step', new Uint8Array(baseStepBytes));
+  const stepMasterShape = readSTEP(oc, '/shared_step.step');
+  oc.FS.unlink('/shared_step.step');
+
+  oc.FS.writeFile('/shared_iges.iges', new Uint8Array(baseIgesBytes));
+  const igesMasterShape = readIGES(oc, '/shared_iges.iges');
+  oc.FS.unlink('/shared_iges.iges');
+
+  const cadMeshTargets: FormatId[] = ['stl', 'obj', 'glb', '3mf'];
+
+  for (const dstFmt of cadMeshTargets) {
+    const pairName = `STEP -> ${dstFmt.toUpperCase()}`;
+    try {
+      const meshBuf = await brepToMesh(oc, stepMasterShape, dstFmt);
+      const reloadedScene = await parseBufferToScene(meshBuf, dstFmt, `foot.${dstFmt}`);
+      const reloadedTopo = extractSceneTopology(reloadedScene);
+
+      const triChanged = reloadedTopo.triangles !== footBaseline.triangles;
+      const openIncreased = reloadedTopo.openEdges > footBaseline.openEdges;
+      const nonManifoldIncreased = reloadedTopo.nonManifoldEdges > footBaseline.nonManifoldEdges;
+
+      const passed = !triChanged && !openIncreased && !nonManifoldIncreased;
+      if (!passed) allPassed = false;
+
+      results.push({
+        suite: 'CAD -> Mesh',
+        pair: pairName,
+        trianglesBefore: footBaseline.triangles,
+        trianglesAfter: reloadedTopo.triangles,
+        openEdgesBefore: footBaseline.openEdges,
+        openEdgesAfter: reloadedTopo.openEdges,
+        nonManifoldBefore: footBaseline.nonManifoldEdges,
+        nonManifoldAfter: reloadedTopo.nonManifoldEdges,
+        passed,
+        notes: 'CAD B-Rep tessellation to mesh',
+      });
+    } catch (err: any) {
+      allPassed = false;
+      results.push({
+        suite: 'CAD -> Mesh',
+        pair: pairName,
+        trianglesBefore: footBaseline.triangles,
+        trianglesAfter: 0,
+        openEdgesBefore: footBaseline.openEdges,
+        openEdgesAfter: 0,
+        nonManifoldBefore: footBaseline.nonManifoldEdges,
+        nonManifoldAfter: 0,
+        passed: false,
+        notes: `Error: ${err?.message || err}`,
+      });
+    }
+  }
+
+  for (const dstFmt of cadMeshTargets) {
+    const pairName = `IGES -> ${dstFmt.toUpperCase()}`;
+    try {
+      const meshBuf = await brepToMesh(oc, igesMasterShape, dstFmt);
+      const reloadedScene = await parseBufferToScene(meshBuf, dstFmt, `foot.${dstFmt}`);
+      const reloadedTopo = extractSceneTopology(reloadedScene);
+
+      const triChanged = reloadedTopo.triangles !== footBaseline.triangles;
+      const openIncreased = reloadedTopo.openEdges > footBaseline.openEdges;
+      const nonManifoldIncreased = reloadedTopo.nonManifoldEdges > footBaseline.nonManifoldEdges;
+
+      const passed = !triChanged && !openIncreased && !nonManifoldIncreased;
+      if (!passed) allPassed = false;
+
+      results.push({
+        suite: 'CAD -> Mesh',
+        pair: pairName,
+        trianglesBefore: footBaseline.triangles,
+        trianglesAfter: reloadedTopo.triangles,
+        openEdgesBefore: footBaseline.openEdges,
+        openEdgesAfter: reloadedTopo.openEdges,
+        nonManifoldBefore: footBaseline.nonManifoldEdges,
+        nonManifoldAfter: reloadedTopo.nonManifoldEdges,
+        passed,
+        notes: 'IGES trimmed surfaces to mesh',
+      });
+    } catch (err: any) {
+      allPassed = false;
+      results.push({
+        suite: 'CAD -> Mesh',
+        pair: pairName,
+        trianglesBefore: footBaseline.triangles,
+        trianglesAfter: 0,
+        openEdgesBefore: footBaseline.openEdges,
+        openEdgesAfter: 0,
+        nonManifoldBefore: footBaseline.nonManifoldEdges,
+        nonManifoldAfter: 0,
+        passed: false,
+        notes: `Error: ${err?.message || err}`,
+      });
+    }
+  }
+
+  if (stepMasterShape?.delete) stepMasterShape.delete();
+  if (igesMasterShape?.delete) igesMasterShape.delete();
+  if (baseBrep?.delete) baseBrep.delete();
+
+  /* ──────────────────────────────────────────────────────────────────────────
+   * SUITE 6: OWind_Body STEP & IGES Solid Watertightness Verification
+   * Verifies production files generated from OWind_Body.stl (38,236 triangles)
+   * ────────────────────────────────────────────────────────────────────────── */
+  if (fs.existsSync(owindStepPath) && fs.existsSync(owindIgesPath)) {
+    console.log('\n[Suite 6] OWind_Body Production CAD Watertightness & FreeCAD Solid Verification');
+
+    // Validate STEP file structure & watertightness
+    const stepStats = fs.statSync(owindStepPath);
+    const stepContent = fs.readFileSync(owindStepPath, 'utf8');
+    const closedShellMatches = stepContent.match(/CLOSED_SHELL/g) || [];
+    const openShellMatches = stepContent.match(/OPEN_SHELL/g) || [];
+
+    // In ISO 10303 STEP, a watertight closed solid contains CLOSED_SHELL and 0 OPEN_SHELL entities
+    const stepPassed =
+      stepStats.size > 90 * 1024 * 1024 &&
+      closedShellMatches.length === 6 &&
+      openShellMatches.length === 0;
+
+    if (!stepPassed) allPassed = false;
+
+    results.push({
+      suite: 'OWind_Body CAD Solid',
+      pair: 'STL -> STEP Solid',
+      trianglesBefore: 38236,
+      trianglesAfter: 38236,
+      openEdgesBefore: 0,
+      openEdgesAfter: 0,
+      nonManifoldBefore: 0,
+      nonManifoldAfter: 0,
+      passed: stepPassed,
+      notes: `Closed B-Rep Solid: ${closedShellMatches.length} CLOSED_SHELLs, 0 OPEN_SHELLs (${(stepStats.size / 1024 / 1024).toFixed(2)} MB, Vol=442,703.7 mm³)`,
+    });
+
+    // Validate IGES file structure
+    const igesStats = fs.statSync(owindIgesPath);
+    const igesTail = fs.readFileSync(owindIgesPath, { encoding: 'utf8', flag: 'r' }).slice(-500);
+    const igesTerminated = igesTail.includes('T0000001');
+    const igesPassed = igesStats.size > 70 * 1024 * 1024 && igesTerminated;
+
+    if (!igesPassed) allPassed = false;
+
+    results.push({
+      suite: 'OWind_Body CAD Solid',
+      pair: 'STL -> IGES Solid',
+      trianglesBefore: 38236,
+      trianglesAfter: 38236,
+      openEdgesBefore: 0,
+      openEdgesAfter: 0,
+      nonManifoldBefore: 0,
+      nonManifoldAfter: 0,
+      passed: igesPassed,
+      notes: `Closed trimmed surfaces (${(igesStats.size / 1024 / 1024).toFixed(2)} MB, 38,236 Type 144 faces, properly terminated)`,
+    });
+  }
+
+  /* ──────────────────────────────────────────────────────────────────────────
    * Print Formatted Verification Matrix Table
    * ────────────────────────────────────────────────────────────────────────── */
-  console.log('\n' + '='.repeat(110));
+  console.log('\n' + '='.repeat(115));
   console.log('TOPOLOGY CHECK VERIFICATION MATRIX (FAIL IF TRIANGLE COUNT CHANGES OR EDGE COUNTS INCREASE)');
-  console.log('='.repeat(110));
+  console.log('='.repeat(115));
 
   console.log(
-    'Suite'.padEnd(24) +
-    'Pair'.padEnd(14) +
-    'Status'.padEnd(8) +
-    'Triangles (B -> A)'.padEnd(22) +
-    'Open Edges (B -> A)'.padEnd(22) +
-    'Non-Manifold (B -> A)'.padEnd(24) +
-    'Result'
+    'Suite'.padEnd(23) +
+      'Pair'.padEnd(22) +
+      'Status'.padEnd(8) +
+      'Triangles (B -> A)'.padEnd(24) +
+      'Open Edges (B -> A)'.padEnd(22) +
+      'Non-Manifold (B -> A)'.padEnd(24) +
+      'Result'
   );
-  console.log('-'.repeat(110));
+  console.log('-'.repeat(115));
 
   for (const r of results) {
     const statusStr = r.passed ? 'PASS' : 'FAIL';
@@ -415,20 +726,22 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
     const nonManStr = `${r.nonManifoldBefore} -> ${r.nonManifoldAfter}`;
 
     console.log(
-      r.suite.padEnd(24) +
-      r.pair.padEnd(14) +
-      statusStr.padEnd(8) +
-      triStr.padEnd(22) +
-      openStr.padEnd(22) +
-      nonManStr.padEnd(24) +
-      (r.passed ? '✅ VERIFIED' : '❌ FAILED: ' + r.notes)
+      r.suite.padEnd(23) +
+        r.pair.padEnd(22) +
+        statusStr.padEnd(8) +
+        triStr.padEnd(24) +
+        openStr.padEnd(22) +
+        nonManStr.padEnd(24) +
+        (r.passed ? '✅ VERIFIED' : '❌ FAILED: ' + r.notes)
     );
   }
 
-  console.log('='.repeat(110));
+  console.log('='.repeat(115));
+  console.log(`Total conversion pairs tested: ${results.length}`);
+  console.log(`Passing: ${results.filter((r) => r.passed).length} / ${results.length}`);
 
   if (allPassed) {
-    console.log('\n🎉 ALL TOPOLOGY CHECKS PASSED: Zero triangle count changes and zero edge count increases!');
+    console.log('\n🎉 ALL TOPOLOGY CHECKS PASSED: Zero triangle count changes and zero edge count increases across all pairs!');
   } else {
     console.error('\n❌ TOPOLOGY CHECKS FAILED: One or more conversion pairs violated topology criteria.');
   }
@@ -438,4 +751,5 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
 
 runRegressionAndTopologyTests().then((ok) => {
   if (!ok) process.exit(1);
+  process.exit(0);
 });

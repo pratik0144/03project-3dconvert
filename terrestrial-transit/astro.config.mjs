@@ -17,6 +17,7 @@ export default defineConfig({
         'three/addons/exporters/OBJExporter.js',
         'three/addons/exporters/GLTFExporter.js',
         'three/addons/utils/BufferGeometryUtils.js',
+        'three/addons/modifiers/SimplifyModifier.js',
         'fflate',
       ],
     },

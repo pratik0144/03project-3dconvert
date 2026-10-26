@@ -8,12 +8,16 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
 // Static imports to avoid Vite dynamic chunk resolution failures in workers
 import { zipSync, strToU8, unzipSync, strFromU8 } from 'fflate';
 
 import type { FormatId, UnitScale } from '../formats';
 
 const OC_CDN_BASE = 'https://cdn.jsdelivr.net/npm/opencascade.js@2.0.0-beta.b5ff984/dist';
+
+export const MAX_CAD_TRIANGLES = 20000;
+export const STEP_BYTES_PER_TRIANGLE = 2660; // ~2.6 KB per triangle
 
 const UNIT_FACTORS: Record<UnitScale, number> = {
   mm: 1,
@@ -36,6 +40,7 @@ interface ConvertMessage {
   outputFormat: FormatId;
   unitScale: UnitScale;
   customScale?: CustomScale;
+  simplifyTarget?: number;
   fileName: string;
 }
 
@@ -60,7 +65,9 @@ let ocInstance: any = null;
 async function getOpenCascade() {
   if (ocInstance) return ocInstance;
 
-  self.postMessage({ type: 'progress', message: 'Loading CAD engine (~20 MB WASM)…' });
+  if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
+    self.postMessage({ type: 'progress', message: 'Loading CAD engine (~20 MB WASM)…' });
+  }
 
   const jsUrl = `${OC_CDN_BASE}/opencascade.full.js`;
   const wasmUrl = `${OC_CDN_BASE}/opencascade.full.wasm`;
@@ -170,7 +177,7 @@ if (typeof self !== 'undefined') {
     return;
   }
 
-  const { jobId, inputBuffer, inputFormat, outputFormat, unitScale, customScale, fileName } = e.data;
+  const { jobId, inputBuffer, inputFormat, outputFormat, unitScale, customScale, simplifyTarget, fileName } = e.data;
 
   try {
     const oc = await getOpenCascade();
@@ -198,7 +205,7 @@ if (typeof self !== 'undefined') {
       shape = readIGES(oc, `/${inputFileName}`);
     } else {
       // Mesh input -> STEP/IGES: read the mesh, create faceted BREP
-      shape = await meshToBrep(oc, inputBuffer, inputFormat, unitScale, customScale);
+      shape = await meshToBrep(oc, inputBuffer, inputFormat, unitScale, customScale, simplifyTarget);
     }
 
     // Apply scale to CAD shape if input was CAD and scale is uniform
@@ -271,7 +278,7 @@ if (typeof self !== 'undefined') {
  * Strategy 2: TransferRoot(i) for each root individually
  * Strategy 3: Retrieve shapes by index if transfer reported success
  */
-function readSTEP(oc: any, filePath: string): any {
+export function readSTEP(oc: any, filePath: string): any {
   const reader = new oc.STEPControl_Reader_1();
   const status = reader.ReadFile(filePath);
   if (status !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
@@ -340,7 +347,7 @@ function readSTEP(oc: any, filePath: string): any {
 /**
  * Read an IGES file with multiple transfer fallback strategies.
  */
-function readIGES(oc: any, filePath: string): any {
+export function readIGES(oc: any, filePath: string): any {
   const reader = new oc.IGESControl_Reader_1();
   const status = reader.ReadFile(filePath);
   if (status !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
@@ -407,7 +414,7 @@ function readIGES(oc: any, filePath: string): any {
 /**
  * Write a shape to STEP format.
  */
-function writeSTEP(oc: any, shape: any): ArrayBuffer {
+export function writeSTEP(oc: any, shape: any): ArrayBuffer {
   const writer = new oc.STEPControl_Writer_1();
 
   try {
@@ -441,7 +448,7 @@ function writeSTEP(oc: any, shape: any): ArrayBuffer {
 /**
  * Write a shape to IGES format.
  */
-function writeIGES(oc: any, shape: any): ArrayBuffer {
+export function writeIGES(oc: any, shape: any): ArrayBuffer {
   const writer = new oc.IGESControl_Writer_1();
   writer.AddShape(shape, new oc.Message_ProgressRange_1());
   writer.ComputeModel();
@@ -730,7 +737,14 @@ function extractSceneGeometry(scene: THREE.Object3D): THREE.BufferGeometry {
  * 2. RWStl + BRep_Builder::MakeFace - reads triangulation, attaches to a face
  * 3. Manual BREP - creates individual planar faces from triangles, then sews
  */
-export async function meshToBrep(oc: any, buffer: ArrayBuffer, format: FormatId, unitScale: UnitScale, customScale?: CustomScale): Promise<any> {
+export async function meshToBrep(
+  oc: any,
+  buffer: ArrayBuffer,
+  format: FormatId,
+  unitScale: UnitScale,
+  customScale?: CustomScale,
+  simplifyTarget?: number
+): Promise<any> {
   // Parse mesh using three.js to get BufferGeometry
   let geometry: THREE.BufferGeometry;
 
@@ -767,17 +781,38 @@ export async function meshToBrep(oc: any, buffer: ArrayBuffer, format: FormatId,
   // Weld identical vertices and eliminate degenerate triangles
   geometry = weldGeometry(geometry);
 
-  // Pre-flight density check: CAD B-Rep cannot handle >50K faces in 32-bit WASM
-  const triCount = geometry.getIndex()
+  // Initial triangle count
+  const initialTriangles = geometry.getIndex()
     ? geometry.getIndex()!.count / 3
     : geometry.getAttribute('position').count / 3;
 
-  if (triCount > 50000) {
-    throw new Error(
-      `Mesh is too dense for CAD export (${Math.round(triCount).toLocaleString()} triangles). ` +
-      `Converting over 50,000 triangles into CAD B-Rep exceeds the browser WebAssembly memory limit (2 GB). ` +
-      `Please simplify the mesh or export to OBJ, GLB, or 3MF instead.`
-    );
+  // In-browser simplification based on estimated STEP size (~2.6 KB per triangle)
+  // 20,000 triangles corresponds to ~52 MB STEP file (safe for browser WASM memory)
+  const targetTriangles = simplifyTarget !== undefined
+    ? simplifyTarget
+    : (initialTriangles > MAX_CAD_TRIANGLES ? MAX_CAD_TRIANGLES : 0);
+
+  if (targetTriangles > 0 && initialTriangles > targetTriangles) {
+    const estMbBefore = ((initialTriangles * STEP_BYTES_PER_TRIANGLE) / (1024 * 1024)).toFixed(1);
+    const estMbAfter = ((targetTriangles * STEP_BYTES_PER_TRIANGLE) / (1024 * 1024)).toFixed(1);
+
+    if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
+      self.postMessage({
+        type: 'progress',
+        message: `Simplifying mesh for CAD export (${Math.round(initialTriangles).toLocaleString()} → ${targetTriangles.toLocaleString()} triangles; estimated STEP size: ${estMbBefore} MB → ~${estMbAfter} MB)…`,
+      });
+    }
+
+    try {
+      const modifier = new SimplifyModifier();
+      const posCount = geometry.getAttribute('position').count;
+      const ratio = Math.max(0.01, targetTriangles / initialTriangles);
+      const countToRemove = Math.floor(posCount * (1 - ratio));
+      geometry = await modifier.modify(geometry, countToRemove);
+      geometry = weldGeometry(geometry);
+    } catch (simErr: any) {
+      console.warn('Mesh simplification fallback warning:', simErr);
+    }
   }
 
   // Ensure indexed geometry for consistent access

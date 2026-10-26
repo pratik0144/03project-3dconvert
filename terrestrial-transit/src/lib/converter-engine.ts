@@ -193,6 +193,7 @@ export async function convertFile(
   outputFormat: FormatId,
   unitScale: UnitScale,
   customScale?: CustomScale,
+  simplifyTarget?: number,
 ): Promise<Blob> {
   const jobId = crypto.randomUUID();
   const workerType: 'mesh' | 'cad' = needsCadWorker(inputFormat, outputFormat) ? 'cad' : 'mesh';
@@ -218,6 +219,7 @@ export async function convertFile(
           outputFormat,
           unitScale,
           customScale,
+          simplifyTarget,
           fileName: file.name,
         },
         [arrayBuffer]

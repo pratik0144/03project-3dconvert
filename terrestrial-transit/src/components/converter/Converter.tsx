@@ -38,6 +38,10 @@ interface FileJob {
   uniformScale?: boolean;
   scaleMultiplier?: number;
   isAdjusting?: boolean;
+
+  // CAD mesh simplification
+  simplifyForCad?: boolean;
+  simplifyTarget?: number;
 }
 
 function formatDim(val: number | undefined): string {
@@ -281,12 +285,19 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
       setFiles([...updatedFiles]);
 
       try {
+        const isCad = outputFormat === 'step' || outputFormat === 'iges';
+        const isMesh = job.inputFormat !== 'step' && job.inputFormat !== 'iges';
+        const triangles = job.analysis?.triangles || 0;
+        const needsSimplification = isCad && isMesh && triangles > 20000;
+        const simplifyTarget = (job.simplifyForCad ?? needsSimplification) ? (job.simplifyTarget || 20000) : undefined;
+
         const result = await convertFile(
           job.file,
           job.inputFormat,
           outputFormat,
           unitScale,
-          job.customScale
+          job.customScale,
+          simplifyTarget
         );
         const resultFilename = getOutputFilename(job.file.name, outputFormat);
         updatedFiles[i] = { ...updatedFiles[i], status: 'done', result, resultFilename };
@@ -547,6 +558,28 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
                           </span>
                         )}
                       </div>
+
+                      {outputFormat && (outputFormat === 'step' || outputFormat === 'iges') && job.inputFormat !== 'step' && job.inputFormat !== 'iges' && (job.analysis?.triangles || 0) > 20000 && (
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-3 py-1.5 mt-2 rounded bg-canvas border border-hairline text-[11px] font-mono">
+                          <div className="flex items-center gap-1.5 text-mute">
+                            <span className="text-amber-500 font-sans font-bold">⚠️</span>
+                            <span>
+                              Dense mesh: <strong className="text-ink">{job.analysis!.triangles.toLocaleString()} triangles</strong> (~{((job.analysis!.triangles * 2.6) / 1024).toFixed(1)} MB STEP).
+                            </span>
+                          </div>
+                          <label className="flex items-center gap-2 cursor-pointer text-ink font-medium shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={job.simplifyForCad ?? true}
+                              onChange={(e) => {
+                                setFiles(prev => prev.map(f => f.id === job.id ? { ...f, simplifyForCad: e.target.checked } : f));
+                              }}
+                              className="rounded border-hairline accent-ink"
+                            />
+                            <span>Simplify to 20k triangles (~52 MB)</span>
+                          </label>
+                        </div>
+                      )}
                     </div>
 
                     {/* Right: Actions & Status */}
