@@ -7,6 +7,7 @@ export interface FormatInfo {
   mimeTypes: string[];
   category: 'mesh' | 'cad';
   description: string;
+  isInputOnly?: boolean;
 }
 
 export const FORMATS: Record<FormatId, FormatInfo> = {
@@ -57,6 +58,7 @@ export const FORMATS: Record<FormatId, FormatInfo> = {
     mimeTypes: ['model/iges'],
     category: 'cad',
     description: 'Initial Graphics Exchange Specification',
+    isInputOnly: true,
   },
 };
 
@@ -67,9 +69,14 @@ export interface ConversionRoute {
   note?: string;
 }
 
-// Every format converts to every other format. The only question is lossiness.
+// Every format converts to every other format, except input-only formats (e.g. IGES) cannot be target outputs.
 function getConversionRoute(from: FormatId, to: FormatId): ConversionRoute {
   if (from === to) return { support: 'disabled' };
+
+  // Input-only formats cannot be used as an output/target format
+  if (FORMATS[to]?.isInputOnly) {
+    return { support: 'disabled' };
+  }
 
   const fromInfo = FORMATS[from];
   const toInfo = FORMATS[to];
@@ -90,7 +97,7 @@ function getConversionRoute(from: FormatId, to: FormatId): ConversionRoute {
     };
   }
 
-  // CAD → CAD (STEP ↔ IGES)
+  // CAD → CAD (e.g. IGES -> STEP)
   if (fromInfo.category === 'cad' && toInfo.category === 'cad') {
     return { support: 'full' };
   }
@@ -109,6 +116,13 @@ export function getCompatibleOutputFormats(inputFormat: FormatId): Array<{ forma
   }
   return results;
 }
+
+export function isOutputFormat(format: FormatId): boolean {
+  return !FORMATS[format]?.isInputOnly;
+}
+
+export const INPUT_FORMATS: FormatInfo[] = Object.values(FORMATS);
+export const OUTPUT_FORMATS: FormatInfo[] = Object.values(FORMATS).filter(f => !f.isInputOnly);
 
 export function detectFormat(filename: string): FormatId | null {
   const ext = '.' + filename.split('.').pop()?.toLowerCase();

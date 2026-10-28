@@ -1,4 +1,4 @@
-import type { FormatId, UnitScale } from './formats';
+import { FORMATS, getRoute, type FormatId, type UnitScale } from './formats.ts';
 
 export type ConversionStatus = 'queued' | 'converting' | 'done' | 'failed';
 
@@ -195,6 +195,15 @@ export async function convertFile(
   customScale?: CustomScale,
   simplifyTarget?: number,
 ): Promise<Blob> {
+  if (FORMATS[outputFormat]?.isInputOnly) {
+    throw new Error(`${FORMATS[outputFormat].name} is supported as an input format only.`);
+  }
+
+  const route = getRoute(inputFormat, outputFormat);
+  if (route.support === 'disabled') {
+    throw new Error(`Conversion from ${FORMATS[inputFormat]?.name || inputFormat} to ${FORMATS[outputFormat]?.name || outputFormat} is not supported.`);
+  }
+
   const jobId = crypto.randomUUID();
   const workerType: 'mesh' | 'cad' = needsCadWorker(inputFormat, outputFormat) ? 'cad' : 'mesh';
 

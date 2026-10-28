@@ -67,7 +67,8 @@ function isScaled(job: FileJob): boolean {
 
 export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
   const [files, setFiles] = useState<FileJob[]>([]);
-  const [outputFormat, setOutputFormat] = useState<FormatId | null>(defaultTo || null);
+  const initialOutput = defaultTo && !FORMATS[defaultTo]?.isInputOnly ? defaultTo : null;
+  const [outputFormat, setOutputFormat] = useState<FormatId | null>(initialOutput);
   const [unitScale, setUnitScale] = useState<UnitScale>('mm');
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -125,12 +126,14 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
       }
 
       const inputFormats = new Set(jobs.map(j => j.inputFormat));
-      if (inputFormats.size === 1 && !outputFormat) {
+      if (inputFormats.size === 1) {
         const fmt = [...inputFormats][0];
         const compat = getCompatibleOutputFormats(fmt);
-        if (compat.length > 0) {
-          const best = compat.find(c => c.route.support === 'full') || compat[0];
-          setOutputFormat(best.format.id);
+        if (!outputFormat || !compat.some(c => c.format.id === outputFormat)) {
+          if (compat.length > 0) {
+            const best = compat.find(c => c.route.support === 'full') || compat[0];
+            setOutputFormat(best.format.id);
+          }
         }
       }
 
@@ -285,7 +288,7 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
       setFiles([...updatedFiles]);
 
       try {
-        const isCad = outputFormat === 'step' || outputFormat === 'iges';
+        const isCad = outputFormat === 'step';
         const isMesh = job.inputFormat !== 'step' && job.inputFormat !== 'iges';
         const triangles = job.analysis?.triangles || 0;
         const needsSimplification = isCad && isMesh && triangles > 20000;
@@ -559,7 +562,7 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
                         )}
                       </div>
 
-                      {outputFormat && (outputFormat === 'step' || outputFormat === 'iges') && job.inputFormat !== 'step' && job.inputFormat !== 'iges' && (job.analysis?.triangles || 0) > 20000 && (
+                      {outputFormat === 'step' && job.inputFormat !== 'step' && job.inputFormat !== 'iges' && (job.analysis?.triangles || 0) > 20000 && (
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-3 py-1.5 mt-2 rounded bg-canvas border border-hairline text-[11px] font-mono">
                           <div className="flex items-center gap-1.5 text-mute">
                             <span className="text-amber-500 font-sans font-bold">⚠️</span>

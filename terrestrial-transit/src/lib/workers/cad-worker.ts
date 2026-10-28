@@ -230,8 +230,7 @@ if (typeof self !== 'undefined') {
       resultBuffer = writeSTEP(oc, shape);
       mimeType = 'model/step';
     } else if (outputFormat === 'iges') {
-      resultBuffer = writeIGES(oc, shape);
-      mimeType = 'model/iges';
+      throw new Error('IGES is supported as an input format only.');
     } else {
       // CAD -> Mesh: tessellate the shape
       resultBuffer = await brepToMesh(oc, shape, outputFormat, customScale);

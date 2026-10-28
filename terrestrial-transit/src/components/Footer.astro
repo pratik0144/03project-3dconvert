@@ -1,10 +1,12 @@
 ---
+import Logo from './Logo.astro';
+
 const year = new Date().getFullYear();
 ---
 
 <footer class="border-t border-hairline bg-canvas mt-auto">
   <div class="mx-auto max-w-[1200px] px-4 sm:px-6 py-12 sm:py-16">
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-12">
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-8 mb-12">
       <div>
         <h3 class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4">Product</h3>
         <ul class="space-y-2">
@@ -25,17 +27,14 @@ const year = new Date().getFullYear();
           <li><a href="/terms" class="text-[14px] leading-5 text-body hover:text-ink transition-colors">Terms</a></li>
         </ul>
       </div>
-      <div>
-        <h3 class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4">Resources</h3>
-        <ul class="space-y-2">
-          <li><a href="/blog" class="text-[14px] leading-5 text-body hover:text-ink transition-colors">Blog</a></li>
-        </ul>
-      </div>
     </div>
     <div class="border-t border-hairline pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-      <p class="text-[12px] leading-4 text-mute">
-        &copy; {year} 3dmodelfileconverter.com. All rights reserved.
-      </p>
+      <div class="flex items-center gap-2">
+        <Logo class="w-4 h-4 shrink-0" />
+        <p class="text-[12px] leading-4 text-mute">
+          &copy; {year} 3dmodelfileconverter.com. All rights reserved.
+        </p>
+      </div>
       <p class="text-[12px] leading-4 text-faint">
         100% client-side. Your files never leave your device.
       </p>

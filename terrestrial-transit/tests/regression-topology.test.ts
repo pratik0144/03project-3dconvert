@@ -49,7 +49,13 @@ import {
   writeIGES,
   readIGES,
 } from '../src/lib/workers/cad-worker.ts';
-import type { FormatId } from '../src/lib/formats.ts';
+import {
+  FORMATS,
+  getRoute,
+  getCompatibleOutputFormats,
+  isOutputFormat,
+  type FormatId,
+} from '../src/lib/formats.ts';
 
 const OC_CDN_BASE = 'https://cdn.jsdelivr.net/npm/opencascade.js@2.0.0-beta.b5ff984/dist';
 let cachedOc: any = null;
@@ -218,6 +224,88 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
   if (!fs.existsSync(owindBodyPath)) {
     throw new Error(`Regression test file not found at: ${owindBodyPath}`);
   }
+
+  /* ──────────────────────────────────────────────────────────────────────────
+   * SUITE 0: IGES Input-Only Specification & Output Routing Matrix
+   * ────────────────────────────────────────────────────────────────────────── */
+  console.log('\n[Suite 0] IGES Input-Only Specification & Output Routing Matrix');
+
+  const igesInputOnly = FORMATS.iges.isInputOnly === true;
+  if (!igesInputOnly) allPassed = false;
+  results.push({
+    suite: 'Specification',
+    pair: 'FORMATS.iges.isInputOnly',
+    trianglesBefore: 0,
+    trianglesAfter: 0,
+    openEdgesBefore: 0,
+    openEdgesAfter: 0,
+    nonManifoldBefore: 0,
+    nonManifoldAfter: 0,
+    passed: igesInputOnly,
+    notes: igesInputOnly ? 'IGES flagged as input-only' : 'IGES missing isInputOnly flag',
+  });
+
+  const igesNotOutput = !isOutputFormat('iges');
+  if (!igesNotOutput) allPassed = false;
+  results.push({
+    suite: 'Specification',
+    pair: 'isOutputFormat(iges)',
+    trianglesBefore: 0,
+    trianglesAfter: 0,
+    openEdgesBefore: 0,
+    openEdgesAfter: 0,
+    nonManifoldBefore: 0,
+    nonManifoldAfter: 0,
+    passed: igesNotOutput,
+    notes: igesNotOutput ? 'Correctly reports false' : 'Failed: reported true',
+  });
+
+  const allFormats: FormatId[] = ['stl', 'obj', 'step', '3mf', 'glb', 'iges'];
+  for (const srcFmt of allFormats) {
+    const routeToIges = getRoute(srcFmt, 'iges');
+    const compatOutputs = getCompatibleOutputFormats(srcFmt);
+    const hasIgesInOutputs = compatOutputs.some(c => c.format.id === 'iges');
+    const passed = routeToIges.support === 'disabled' && !hasIgesInOutputs;
+    if (!passed) allPassed = false;
+
+    results.push({
+      suite: 'Routing Policy',
+      pair: `${srcFmt.toUpperCase()} -> IGES (Disabled)`,
+      trianglesBefore: 0,
+      trianglesAfter: 0,
+      openEdgesBefore: 0,
+      openEdgesAfter: 0,
+      nonManifoldBefore: 0,
+      nonManifoldAfter: 0,
+      passed,
+      notes: passed
+        ? 'Route disabled & omitted from compatible outputs'
+        : 'Failed: IGES allowed as output format',
+    });
+  }
+
+  const igesOutputs = getCompatibleOutputFormats('iges');
+  const igesOutputIds = igesOutputs.map(c => c.format.id).sort();
+  const expectedIgesOutputs: FormatId[] = ['3mf', 'glb', 'obj', 'step', 'stl'];
+  const igesOutputMatch =
+    igesOutputIds.length === 5 &&
+    expectedIgesOutputs.every((id, idx) => id === igesOutputIds[idx]);
+
+  if (!igesOutputMatch) allPassed = false;
+  results.push({
+    suite: 'Routing Policy',
+    pair: 'IGES -> Any Output',
+    trianglesBefore: 0,
+    trianglesAfter: 0,
+    openEdgesBefore: 0,
+    openEdgesAfter: 0,
+    nonManifoldBefore: 0,
+    nonManifoldAfter: 0,
+    passed: igesOutputMatch,
+    notes: igesOutputMatch
+      ? `All 5 target formats available: [${igesOutputIds.join(', ')}]`
+      : `Failed: expected [${expectedIgesOutputs.join(', ')}], got [${igesOutputIds.join(', ')}]`,
+  });
 
   /* ──────────────────────────────────────────────────────────────────────────
    * SUITE 1: Permanent Regression Test — OWind_Body.stl (38,236 triangles)
@@ -421,18 +509,18 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
   }
 
   /* ──────────────────────────────────────────────────────────────────────────
-   * SUITE 4 & 5: Mesh -> CAD and CAD -> Mesh Pairs (via OpenCascade.js)
+   * SUITE 4 & 5: Mesh -> CAD and CAD -> Mesh / CAD -> CAD Pairs (via OpenCascade.js)
    * Tests:
    *   OBJ, GLB, 3MF, STL -> STEP
-   *   OBJ, GLB, 3MF, STL -> IGES
    *   STEP -> STL, OBJ, GLB, 3MF
    *   IGES -> STL, OBJ, GLB, 3MF
+   *   IGES -> STEP (CAD -> CAD)
    * ────────────────────────────────────────────────────────────────────────── */
-  console.log('\n[Suite 4 & 5] Mesh <-> CAD Conversion Matrix (OpenCascade.js)');
+  console.log('\n[Suite 4 & 5] Mesh <-> CAD & CAD -> CAD Conversion Matrix (OpenCascade.js)');
   console.log('Loading OpenCascade kernel for CAD topology verification…');
   const oc = await getOpenCascade();
 
-  // SUITE 4: Mesh -> CAD (OBJ, GLB, 3MF, STL -> STEP and IGES)
+  // SUITE 4: Mesh -> CAD (OBJ, GLB, 3MF, STL -> STEP)
   for (const src of meshInputs) {
     const srcScene = await parseInput(src.buffer, src.format, `foot.${src.format}`);
     const srcTopo = extractSceneTopology(srcScene);
@@ -477,57 +565,6 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
       results.push({
         suite: 'Mesh -> CAD',
         pair: stepPairName,
-        trianglesBefore: srcTopo.triangles,
-        trianglesAfter: 0,
-        openEdgesBefore: srcTopo.openEdges,
-        openEdgesAfter: 0,
-        nonManifoldBefore: srcTopo.nonManifoldEdges,
-        nonManifoldAfter: 0,
-        passed: false,
-        notes: `Error: ${err?.message || err}`,
-      });
-    }
-
-    // Mesh -> IGES
-    const igesPairName = `${src.format.toUpperCase()} -> IGES`;
-    try {
-      const igesBrep = await meshToBrep(oc, src.buffer, src.format, 'mm');
-      const igesBytes = writeIGES(oc, igesBrep);
-
-      oc.FS.writeFile('/temp_test.iges', new Uint8Array(igesBytes));
-      const readIgesShape = readIGES(oc, '/temp_test.iges');
-      oc.FS.unlink('/temp_test.iges');
-
-      const igesMeshBuf = await brepToMesh(oc, readIgesShape, 'stl');
-      const reloadedScene = await parseInput(igesMeshBuf, 'stl', 'foot.stl');
-      const reloadedTopo = extractSceneTopology(reloadedScene);
-
-      const triChanged = reloadedTopo.triangles !== srcTopo.triangles;
-      const openIncreased = reloadedTopo.openEdges > srcTopo.openEdges;
-      const nonManifoldIncreased = reloadedTopo.nonManifoldEdges > srcTopo.nonManifoldEdges;
-
-      const passed = !triChanged && !openIncreased && !nonManifoldIncreased;
-      if (!passed) allPassed = false;
-
-      results.push({
-        suite: 'Mesh -> CAD',
-        pair: igesPairName,
-        trianglesBefore: srcTopo.triangles,
-        trianglesAfter: reloadedTopo.triangles,
-        openEdgesBefore: srcTopo.openEdges,
-        openEdgesAfter: reloadedTopo.openEdges,
-        nonManifoldBefore: srcTopo.nonManifoldEdges,
-        nonManifoldAfter: reloadedTopo.nonManifoldEdges,
-        passed,
-        notes: 'Trimmed Surface IGES verified',
-      });
-      if (readIgesShape && readIgesShape.delete) readIgesShape.delete();
-      if (igesBrep && igesBrep.delete) igesBrep.delete();
-    } catch (err: any) {
-      allPassed = false;
-      results.push({
-        suite: 'Mesh -> CAD',
-        pair: igesPairName,
         trianglesBefore: srcTopo.triangles,
         trianglesAfter: 0,
         openEdgesBefore: srcTopo.openEdges,
@@ -641,6 +678,54 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
     }
   }
 
+  // IGES -> STEP (CAD -> CAD)
+  const igesStepPairName = 'IGES -> STEP';
+  try {
+    const stepBytes = writeSTEP(oc, igesMasterShape);
+    oc.FS.writeFile('/temp_step_from_iges.step', new Uint8Array(stepBytes));
+    const stepFromIgesShape = readSTEP(oc, '/temp_step_from_iges.step');
+    oc.FS.unlink('/temp_step_from_iges.step');
+
+    const meshBuf = await brepToMesh(oc, stepFromIgesShape, 'stl');
+    const reloadedScene = await parseBufferToScene(meshBuf, 'stl', 'foot_from_iges.stl');
+    const reloadedTopo = extractSceneTopology(reloadedScene);
+
+    const triChanged = reloadedTopo.triangles !== footBaseline.triangles;
+    const openIncreased = reloadedTopo.openEdges > footBaseline.openEdges;
+    const nonManifoldIncreased = reloadedTopo.nonManifoldEdges > footBaseline.nonManifoldEdges;
+
+    const passed = !triChanged && !openIncreased && !nonManifoldIncreased;
+    if (!passed) allPassed = false;
+
+    results.push({
+      suite: 'CAD -> CAD',
+      pair: igesStepPairName,
+      trianglesBefore: footBaseline.triangles,
+      trianglesAfter: reloadedTopo.triangles,
+      openEdgesBefore: footBaseline.openEdges,
+      openEdgesAfter: reloadedTopo.openEdges,
+      nonManifoldBefore: footBaseline.nonManifoldEdges,
+      nonManifoldAfter: reloadedTopo.nonManifoldEdges,
+      passed,
+      notes: 'IGES trimmed surfaces transferred to STEP B-Rep',
+    });
+    if (stepFromIgesShape?.delete) stepFromIgesShape.delete();
+  } catch (err: any) {
+    allPassed = false;
+    results.push({
+      suite: 'CAD -> CAD',
+      pair: igesStepPairName,
+      trianglesBefore: footBaseline.triangles,
+      trianglesAfter: 0,
+      openEdgesBefore: footBaseline.openEdges,
+      openEdgesAfter: 0,
+      nonManifoldBefore: footBaseline.nonManifoldEdges,
+      nonManifoldAfter: 0,
+      passed: false,
+      notes: `Error: ${err?.message || err}`,
+    });
+  }
+
   if (stepMasterShape?.delete) stepMasterShape.delete();
   if (igesMasterShape?.delete) igesMasterShape.delete();
   if (baseBrep?.delete) baseBrep.delete();
@@ -688,8 +773,8 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
     if (!igesPassed) allPassed = false;
 
     results.push({
-      suite: 'OWind_Body CAD Solid',
-      pair: 'STL -> IGES Solid',
+      suite: 'Production IGES Input',
+      pair: 'OWind_Body.iges',
       trianglesBefore: 38236,
       trianglesAfter: 38236,
       openEdgesBefore: 0,
@@ -704,20 +789,20 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
   /* ──────────────────────────────────────────────────────────────────────────
    * Print Formatted Verification Matrix Table
    * ────────────────────────────────────────────────────────────────────────── */
-  console.log('\n' + '='.repeat(115));
+  console.log('\n' + '='.repeat(125));
   console.log('TOPOLOGY CHECK VERIFICATION MATRIX (FAIL IF TRIANGLE COUNT CHANGES OR EDGE COUNTS INCREASE)');
-  console.log('='.repeat(115));
+  console.log('='.repeat(125));
 
   console.log(
     'Suite'.padEnd(23) +
-      'Pair'.padEnd(22) +
+      'Pair'.padEnd(32) +
       'Status'.padEnd(8) +
       'Triangles (B -> A)'.padEnd(24) +
       'Open Edges (B -> A)'.padEnd(22) +
       'Non-Manifold (B -> A)'.padEnd(24) +
       'Result'
   );
-  console.log('-'.repeat(115));
+  console.log('-'.repeat(125));
 
   for (const r of results) {
     const statusStr = r.passed ? 'PASS' : 'FAIL';
@@ -727,7 +812,7 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
 
     console.log(
       r.suite.padEnd(23) +
-        r.pair.padEnd(22) +
+        r.pair.padEnd(32) +
         statusStr.padEnd(8) +
         triStr.padEnd(24) +
         openStr.padEnd(22) +
@@ -736,7 +821,7 @@ async function runRegressionAndTopologyTests(): Promise<boolean> {
     );
   }
 
-  console.log('='.repeat(115));
+  console.log('='.repeat(125));
   console.log(`Total conversion pairs tested: ${results.length}`);
   console.log(`Passing: ${results.filter((r) => r.passed).length} / ${results.length}`);
 

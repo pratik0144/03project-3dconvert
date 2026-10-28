@@ -10,7 +10,9 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "test": "node tests/regression-topology.test.ts"
+    "test": "node tests/iges-input-only.test.ts && node tests/regression-topology.test.ts",
+    "test:quick": "node tests/iges-input-only.test.ts",
+    "test:topology": "node tests/regression-topology.test.ts"
   },
   "dependencies": {
     "@astrojs/react": "^7.1.0",
