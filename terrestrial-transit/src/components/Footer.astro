@@ -1,33 +1,110 @@
 ---
 import Logo from './Logo.astro';
+import { CONVERSIONS, FORMATS, slug } from '../data/conversions';
 
 const year = new Date().getFullYear();
+
+const inputFormats = [...new Set(CONVERSIONS.map(c => c.from))];
+const inputGroups = inputFormats.map(from => ({
+  from,
+  conversions: CONVERSIONS.filter(c => c.from === from),
+}));
 ---
 
 <footer class="border-t border-hairline bg-canvas mt-auto">
   <div class="mx-auto max-w-[1200px] px-4 sm:px-6 py-12 sm:py-16">
-    <div class="grid grid-cols-2 sm:grid-cols-3 gap-8 mb-12">
+    <!-- Top Grid: Brand, Explore, Formats, Legal & Contact -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
+      <!-- Brand -->
       <div>
-        <h3 class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4">Product</h3>
+        <a href="/" class="flex items-center gap-2.5 font-semibold text-[15px] leading-5 text-ink hover:opacity-80 transition-opacity">
+          <Logo class="w-5 h-5 shrink-0" />
+          <span>3D Model File Converter</span>
+        </a>
+      </div>
+
+      <!-- Explore -->
+      <div>
+        <h3 class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4">Explore</h3>
         <ul class="space-y-2">
-          <li><a href="/" class="text-[14px] leading-5 text-body hover:text-ink transition-colors">Converter</a></li>
+          <li>
+            <a href="/" class="text-[14px] leading-5 text-body hover:text-ink transition-colors">
+              3D Converter
+            </a>
+          </li>
+          <li>
+            <a href="/about" class="text-[14px] leading-5 text-body hover:text-ink transition-colors">
+              About Us
+            </a>
+          </li>
+          <li>
+            <a href="/contact" class="text-[14px] leading-5 text-body hover:text-ink transition-colors">
+              Contact Us
+            </a>
+          </li>
         </ul>
       </div>
+
+      <!-- Formats -->
       <div>
         <h3 class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4">Formats</h3>
-        <ul class="space-y-2">
-          <li><span class="text-[14px] leading-5 text-faint">STL, OBJ, STEP</span></li>
-          <li><span class="text-[14px] leading-5 text-faint">3MF, GLB, IGES</span></li>
+        <ul class="space-y-2 text-[14px] leading-5 text-faint">
+          <li>STL, OBJ, STEP</li>
+          <li>3MF, GLB, IGES (input only)</li>
         </ul>
       </div>
+
+      <!-- Legal & Support -->
       <div>
-        <h3 class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4">Legal</h3>
+        <h3 class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4">Legal & Support</h3>
         <ul class="space-y-2">
-          <li><a href="/privacy" class="text-[14px] leading-5 text-body hover:text-ink transition-colors">Privacy</a></li>
-          <li><a href="/terms" class="text-[14px] leading-5 text-body hover:text-ink transition-colors">Terms</a></li>
+          <li>
+            <a href="/privacy" class="text-[14px] leading-5 text-body hover:text-ink transition-colors">
+              Privacy Policy
+            </a>
+          </li>
+          <li>
+            <a href="/terms" class="text-[14px] leading-5 text-body hover:text-ink transition-colors">
+              Terms & Conditions
+            </a>
+          </li>
+          <li class="pt-2">
+            <span class="font-mono text-[11px] font-medium leading-3 uppercase text-mute block mb-1">Direct Contact</span>
+            <a href="mailto:hello@3dmodelfileconverter.com" class="font-mono text-[12px] sm:text-[13px] text-link hover:underline whitespace-nowrap inline-block">
+              hello@3dmodelfileconverter.com
+            </a>
+          </li>
         </ul>
       </div>
     </div>
+
+    <!-- Conversions Section -->
+    <div class="border-t border-hairline pt-8 mb-12">
+      <h3 class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-6">Conversions</h3>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-8">
+        {inputGroups.map(({ from, conversions }) => (
+          <div>
+            <h4 class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-3">
+              {FORMATS[from]}
+            </h4>
+            <ul class="space-y-2">
+              {conversions.map((c) => (
+                <li>
+                  <a
+                    href={`/${slug(c.from, c.to)}`}
+                    class="text-[14px] leading-5 text-body hover:text-ink transition-colors"
+                  >
+                    {FORMATS[c.from]} to {FORMATS[c.to]}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <!-- Bottom Bar -->
     <div class="border-t border-hairline pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
       <div class="flex items-center gap-2">
         <Logo class="w-4 h-4 shrink-0" />

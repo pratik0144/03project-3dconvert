@@ -1,9 +1,99 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Converter from '../components/converter/Converter';
+import { CONVERSIONS, FORMATS, slug } from '../data/conversions';
+
+const pageTitle = '3D Model File Converter — Free Online STL, OBJ, STEP, 3MF, GLB & IGES Converter';
+const pageDescription = 'Convert 3D model files between STL, OBJ, STEP, 3MF, GLB, and IGES instantly — free, private, and 100% in-browser. No uploads, no signup, no file-size limits.';
+
+const structuredData = [
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "3D Model File Converter",
+    "url": "https://3dmodelfileconverter.com",
+    "description": pageDescription,
+    "applicationCategory": "DesignApplication",
+    "operatingSystem": "Any (browser-based)",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "browserRequirements": "Requires a modern browser with WebAssembly support",
+    "featureList": [
+      "STL to OBJ conversion",
+      "STL to STEP conversion",
+      "STL to 3MF conversion",
+      "STL to GLB conversion",
+      "OBJ to STL conversion",
+      "OBJ to STEP conversion",
+      "OBJ to 3MF conversion",
+      "OBJ to GLB conversion",
+      "STEP to STL conversion",
+      "STEP to OBJ conversion",
+      "STEP to 3MF conversion",
+      "STEP to GLB conversion",
+      "3MF to STL conversion",
+      "3MF to OBJ conversion",
+      "3MF to STEP conversion",
+      "3MF to GLB conversion",
+      "GLB to STL conversion",
+      "GLB to OBJ conversion",
+      "GLB to STEP conversion",
+      "GLB to 3MF conversion",
+      "IGES to STL conversion",
+      "IGES to OBJ conversion",
+      "IGES to STEP conversion",
+      "IGES to 3MF conversion",
+      "IGES to GLB conversion",
+      "100% client-side processing",
+      "No file upload required",
+      "Batch conversion support",
+      "3D preview before download"
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "3D Model File Converter",
+    "url": "https://3dmodelfileconverter.com",
+    "description": pageDescription,
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": "https://3dmodelfileconverter.com/?q={search_term_string}",
+      "query-input": "required name=search_term_string"
+    }
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "3D Model File Converter",
+    "url": "https://3dmodelfileconverter.com",
+    "logo": "https://3dmodelfileconverter.com/favicon.svg",
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "email": "hello@3dmodelfileconverter.com",
+      "contactType": "customer support"
+    }
+  }
+];
+
+const inputFormats = [...new Set(CONVERSIONS.map(c => c.from))];
+const conversionGroups = inputFormats.map(from => ({
+  from,
+  conversions: CONVERSIONS.filter(c => c.from === from),
+}));
 ---
 
-<Layout>
+<Layout
+  title={pageTitle}
+  description={pageDescription}
+  canonicalPath=""
+  ogTitle="3D Model File Converter — Free, Private, In-Browser"
+  ogDescription="Instantly convert STL, OBJ, STEP, 3MF, GLB, and IGES files. No uploads, no signup. Runs 100% in your browser."
+  structuredData={structuredData}
+>
   <section class="py-16 sm:py-20">
     <!-- Hero -->
     <div class="text-center max-w-[800px] mx-auto px-4 sm:px-6 mb-12">
@@ -15,7 +105,7 @@ import Converter from '../components/converter/Converter';
       </h1>
       <p class="text-[16px] leading-6 text-body max-w-[600px] mx-auto">
         Convert between STL, OBJ, STEP, 3MF, GLB, and IGES.
-        Runs entirely in your browser - your files never leave your device.
+        Runs entirely in your browser&mdash;your files never leave your device.
       </p>
     </div>
 
@@ -23,7 +113,7 @@ import Converter from '../components/converter/Converter';
     <Converter client:load />
   </section>
 
-  <!-- Features section -->
+  <!-- How it works -->
   <section class="py-16 border-t border-hairline">
     <div class="max-w-[1200px] mx-auto px-4 sm:px-6">
       <p class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-8 text-center tracking-wide">
@@ -48,7 +138,7 @@ import Converter from '../components/converter/Converter';
           <div class="text-[24px] mb-3">⚡</div>
           <h3 class="text-[14px] font-semibold text-ink mb-1">Convert instantly</h3>
           <p class="text-[14px] leading-5 text-body">
-            Everything runs in Web Workers. Your browser does all the work - nothing is uploaded anywhere.
+            Everything runs in Web Workers. Your browser does all the work&mdash;nothing is uploaded anywhere.
           </p>
         </div>
         <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
@@ -58,6 +148,148 @@ import Converter from '../components/converter/Converter';
             Get each file individually or download all as a ZIP. Unlimited conversions, forever free.
           </p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEO Long-Form Content Section -->
+  <section class="py-16 border-t border-hairline">
+    <div class="max-w-[860px] mx-auto px-4 sm:px-6">
+
+      <article class="space-y-10">
+        <!-- Section 1: What is a 3D Model File Converter? -->
+        <div>
+          <h2 class="text-[22px] sm:text-[26px] font-semibold text-ink mb-4 tracking-[-0.5px]">
+            What Is a 3D Model File Converter?
+          </h2>
+          <p class="text-[15px] leading-7 text-body mb-4">
+            A 3D model file converter transforms geometry, surfaces, and mesh data from one file format to another. Engineers working in SolidWorks or Fusion 360 might need to export a precise STEP assembly into a lightweight STL mesh for 3D printing. Game developers may need to convert a scanned OBJ file into GLB for real-time WebGL rendering. Architects often receive IGES drawings from legacy CAD systems and need to bring them into a modern 3MF workflow for additive manufacturing. Every discipline in the 3D ecosystem runs into format barriers — and a reliable converter eliminates that friction.
+          </p>
+          <p class="text-[15px] leading-7 text-body">
+            Our 3D model file converter supports six of the most widely used formats in engineering, design, and creative industries: <strong>STL</strong>, <strong>OBJ</strong>, <strong>STEP</strong>, <strong>3MF</strong>, <strong>GLB</strong>, and <strong>IGES</strong>. Together these cover the full spectrum from parametric CAD solid models to polygon meshes optimized for rendering, slicing, and web delivery. The tool generates 25 unique conversion paths, letting you move between any pair without installing desktop software or uploading sensitive intellectual property to a remote server.
+          </p>
+        </div>
+
+        <!-- Section 2: Why Client-Side Matters -->
+        <div>
+          <h2 class="text-[22px] sm:text-[26px] font-semibold text-ink mb-4 tracking-[-0.5px]">
+            Why a Browser-Based Converter Changes Everything
+          </h2>
+          <p class="text-[15px] leading-7 text-body mb-4">
+            Most online converters require you to upload your files to a cloud server, wait in a queue, and then download the result. That workflow introduces three serious problems. First, <strong>privacy risk</strong>: your proprietary CAD models, patent-pending prototypes, or client work travels across the internet and sits on someone else's infrastructure. Second, <strong>file-size limits</strong>: many services cap uploads at 50 MB or 100 MB, making them useless for high-poly 3D scans or dense assemblies. Third, <strong>speed</strong>: upload and download times depend on your connection, and peak-hour queues can add minutes or hours.
+          </p>
+          <p class="text-[15px] leading-7 text-body">
+            Our converter runs <strong>100% in your browser</strong>. When you drop a file, it stays on your machine. The conversion engine — powered by <a href="https://dev.opencascade.org/" class="text-link hover:underline" rel="noopener noreferrer" target="_blank">OpenCASCADE Technology</a> compiled to WebAssembly and Three.js running in Web Workers — processes everything in your device's local memory. Once you close the tab, the data is gone. There are no uploads, no server logs, no accounts, and no limits on file size or the number of conversions you perform. This is how every file-conversion tool should work.
+          </p>
+        </div>
+
+        <!-- Section 3: Supported Formats Deep Dive -->
+        <div>
+          <h2 class="text-[22px] sm:text-[26px] font-semibold text-ink mb-4 tracking-[-0.5px]">
+            Supported 3D File Formats
+          </h2>
+          <p class="text-[15px] leading-7 text-body mb-6">
+            Understanding each format helps you choose the right target for your workflow. Here is a concise breakdown of every format our converter handles:
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="bg-canvas-elevated border border-hairline rounded-md p-5">
+              <h3 class="font-mono text-[13px] font-bold text-ink mb-2">STL (Stereolithography)</h3>
+              <p class="text-[13px] leading-5 text-body">
+                The de-facto standard for FDM and SLA 3D printing. STL stores raw triangle geometry without color, texture, or unit information. Nearly every slicer — Cura, PrusaSlicer, Bambu Studio — accepts STL natively.
+              </p>
+            </div>
+            <div class="bg-canvas-elevated border border-hairline rounded-md p-5">
+              <h3 class="font-mono text-[13px] font-bold text-ink mb-2">OBJ (Wavefront)</h3>
+              <p class="text-[13px] leading-5 text-body">
+                A versatile polygon mesh format used across Blender, Maya, ZBrush, and game engines. OBJ supports vertex normals, texture UV coordinates, and material libraries (.mtl), making it the go-to for visual 3D assets.
+              </p>
+            </div>
+            <div class="bg-canvas-elevated border border-hairline rounded-md p-5">
+              <h3 class="font-mono text-[13px] font-bold text-ink mb-2">STEP (ISO 10303)</h3>
+              <p class="text-[13px] leading-5 text-body">
+                The gold standard for parametric CAD exchange. STEP files contain precise boundary-representation (B-Rep) geometry that is editable in SolidWorks, Fusion 360, FreeCAD, and most CNC/CAM software.
+              </p>
+            </div>
+            <div class="bg-canvas-elevated border border-hairline rounded-md p-5">
+              <h3 class="font-mono text-[13px] font-bold text-ink mb-2">3MF (3D Manufacturing Format)</h3>
+              <p class="text-[13px] leading-5 text-body">
+                A modern, XML-based format backed by Microsoft and the 3MF Consortium. 3MF packages mesh geometry with color, material, units, and print-ticket metadata in a single compressed archive — replacing STL in advanced slicers.
+              </p>
+            </div>
+            <div class="bg-canvas-elevated border border-hairline rounded-md p-5">
+              <h3 class="font-mono text-[13px] font-bold text-ink mb-2">GLB (glTF Binary)</h3>
+              <p class="text-[13px] leading-5 text-body">
+                The "JPEG of 3D." GLB is the binary container for glTF, optimized for web rendering, AR/VR experiences, and game engines. It supports PBR materials, skeletal animations, and is native to Three.js, Babylon.js, and Unity.
+              </p>
+            </div>
+            <div class="bg-canvas-elevated border border-hairline rounded-md p-5">
+              <h3 class="font-mono text-[13px] font-bold text-ink mb-2">IGES (Initial Graphics Exchange)</h3>
+              <p class="text-[13px] leading-5 text-body">
+                A legacy CAD interchange format still common in aerospace, automotive, and manufacturing. Our converter accepts IGES as input and translates it to any of the five output formats — bridging decades-old archives with modern tools.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4: Use Cases -->
+        <div>
+          <h2 class="text-[22px] sm:text-[26px] font-semibold text-ink mb-4 tracking-[-0.5px]">
+            Who Uses This 3D Model File Converter?
+          </h2>
+          <p class="text-[15px] leading-7 text-body mb-4">
+            Our user base spans hobbyists, freelancers, and enterprise teams. <strong>3D printing enthusiasts</strong> convert STEP or OBJ files to STL or 3MF before slicing. <strong>Product designers</strong> export STEP assemblies from Fusion 360 to GLB for web-based client reviews. <strong>Game developers</strong> convert OBJ or GLB assets between engines. <strong>Mechanical engineers</strong> bring legacy IGES drawings into STEP for modern CAD editing. <strong>Architects</strong> convert complex meshes into 3MF for full-color additive manufacturing of scale models.
+          </p>
+          <p class="text-[15px] leading-7 text-body">
+            Because the converter handles both mesh formats (STL, OBJ, 3MF, GLB) and parametric CAD formats (STEP, IGES), it bridges two worlds that normally require separate software stacks. The built-in 3D preview lets you inspect your model before downloading, and batch processing means you can convert entire project folders in one session.
+          </p>
+        </div>
+
+        <!-- Section 5: Technical Architecture -->
+        <div>
+          <h2 class="text-[22px] sm:text-[26px] font-semibold text-ink mb-4 tracking-[-0.5px]">
+            Under the Hood: WebAssembly-Powered Conversion
+          </h2>
+          <p class="text-[15px] leading-7 text-body mb-4">
+            Converting between CAD and mesh formats is computationally intensive. Tessellating a STEP B-Rep model into triangles involves evaluating NURBS surfaces, computing chord tolerances, and generating normal vectors — operations that traditionally require a desktop CAD kernel. We compile OpenCASCADE, a production-grade open-source CAD kernel used by FreeCAD and KiCad, into WebAssembly so it runs at near-native speed in your browser. Mesh-to-mesh conversions leverage Three.js's well-tested loader and exporter pipeline, also executing in background Web Workers so the UI stays responsive even with million-triangle models.
+          </p>
+          <p class="text-[15px] leading-7 text-body">
+            The result is an architecture that handles conversions like STL to OBJ, STEP to GLB, or IGES to 3MF with the same reliability you would expect from a desktop application — but with zero installation, zero configuration, and instant availability on any device with a modern browser.
+          </p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- All Conversions Grid -->
+  <section class="py-16 border-t border-hairline">
+    <div class="max-w-[1200px] mx-auto px-4 sm:px-6">
+      <h2 class="text-[22px] sm:text-[26px] font-semibold text-ink mb-2 text-center tracking-[-0.5px]">
+        All Supported Conversions
+      </h2>
+      <p class="text-[14px] leading-5 text-body text-center mb-8 max-w-[600px] mx-auto">
+        Click any conversion pair below to open a dedicated converter with detailed format guides and technical notes.
+      </p>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-6">
+        {conversionGroups.map(({ from, conversions }) => (
+          <div>
+            <h3 class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-3">
+              {FORMATS[from]} Conversions
+            </h3>
+            <ul class="space-y-2">
+              {conversions.map((c) => (
+                <li>
+                  <a
+                    href={`/${slug(c.from, c.to)}`}
+                    class="text-[14px] leading-5 text-link hover:text-ink hover:underline transition-colors"
+                  >
+                    {FORMATS[c.from]} to {FORMATS[c.to]}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </div>
     </div>
   </section>

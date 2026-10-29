@@ -1,0 +1,122 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const pageTitle = "Privacy Policy | 3D Model File Converter";
+const pageDescription = "Read the Privacy Policy for 3D Model File Converter. Learn how our client-side WebAssembly architecture ensures 100% privacy with zero file uploads.";
+---
+
+<Layout title={pageTitle} description={pageDescription} canonicalPath="/privacy">
+  <div class="py-16 sm:py-20">
+    <!-- Header -->
+    <div class="text-center max-w-[800px] mx-auto px-4 sm:px-6 mb-12">
+      <p class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4 tracking-wide">
+        Legal & Privacy · Updated for 2026
+      </p>
+      <h1 class="text-[32px] sm:text-[48px] font-semibold leading-[1] tracking-[-2.4px] text-ink mb-4">
+        Privacy Policy
+      </h1>
+      <p class="text-[16px] leading-6 text-body max-w-[620px] mx-auto">
+        We believe your 3D models and proprietary CAD engineering designs belong exclusively to you. Learn how our in-browser architecture guarantees absolute privacy.
+      </p>
+    </div>
+
+    <!-- Main Content Container -->
+    <article class="max-w-[800px] mx-auto px-4 sm:px-6 space-y-8">
+
+      <!-- Plain English Summary Box -->
+      <div class="bg-canvas-elevated border border-hairline rounded-md p-6 sm:p-8">
+        <h2 class="text-[16px] font-semibold text-ink mb-2">Summary in Plain English</h2>
+        <p class="text-[14px] leading-6 text-body">
+          <strong>3D Model File Converter does NOT upload, store, collect, or transmit your 3D models or CAD files.</strong> All file parsing, B-Rep boundary calculations, polygon decimation, tessellation, and exports execute 100% locally inside your web browser using client-side JavaScript, Web Workers, and WebAssembly (OpenCascade.js & Three.js). Your files never touch our servers or any third-party cloud.
+        </p>
+      </div>
+
+      <!-- Section 1 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">1. Introduction</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          Welcome to 3D Model File Converter (<span class="font-mono text-[13px] text-ink">3dmodelfileconverter.com</span>). This Privacy Policy outlines how your data is handled when you visit our website and use our conversion tools.
+        </p>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          Because our utility is architected from the ground up to operate completely client-side, we do not require user accounts, passwords, or personal credentials to convert 3D files.
+        </p>
+      </section>
+
+      <!-- Section 2 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">2. Zero Uploads & Zero Transmission of 3D Models</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          When you drag, drop, or select 3D files (including STL, OBJ, STEP, 3MF, GLB, and IGES):
+        </p>
+        <ul class="list-disc pl-5 space-y-2 text-[14px] sm:text-[15px] leading-6 text-body">
+          <li>The files are accessed strictly via the HTML5 File API within your local browser runtime.</li>
+          <li>No HTTP POST, PUT, or WebSocket transfer transmits your file contents, geometry, vertices, textures, or metadata across the internet.</li>
+          <li>All file transformations happen in dedicated Web Worker threads operating directly on your device’s CPU and memory.</li>
+        </ul>
+      </section>
+
+      <!-- Section 3 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">3. Information We Do Not Collect</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          Unlike traditional web services, we have intentionally built our infrastructure with zero telemetry on user files. We never collect:
+        </p>
+        <ul class="list-disc pl-5 space-y-2 text-[14px] sm:text-[15px] leading-6 text-body">
+          <li>The names, sizes, or metadata of your 3D files.</li>
+          <li>3D geometry, dimensional measurements, vertex counts, or CAD topology.</li>
+          <li>Personal identification details, email addresses, or payment information.</li>
+          <li>User accounts, login credentials, or saved conversion histories.</li>
+        </ul>
+      </section>
+
+      <!-- Section 4 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">4. Browser Memory & Temporary Data Lifecycle</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          During conversion, converted models and ZIP archives are stored temporarily in your browser's RAM as in-memory <span class="font-mono text-[13px] text-ink">Blob</span> objects. When you click download, a local browser object URL (<span class="font-mono text-[13px] text-ink">blob:http://...</span>) triggers your native browser save dialog.
+        </p>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          Once the download finishes or you reload/close the browser tab, all temporary memory allocations and worker heaps are immediately destroyed and reclaimed by your operating system.
+        </p>
+      </section>
+
+      <!-- Section 5 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">5. Web Hosting & Infrastructure</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          Our website assets (HTML, CSS, JavaScript, and WebAssembly binaries) are served via secure Content Delivery Networks (CDNs). The hosting provider may log standard HTTP request metadata (such as IP address, user-agent, and requested asset path) for security, DDoS protection, and cache routing purposes. These access logs never contain any of your file content.
+        </p>
+      </section>
+
+      <!-- Section 6 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">6. Intellectual Property & Ownership</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          You retain 100% intellectual property ownership, copyright, and patent rights to every model and CAD file you process through our tool. 3D Model File Converter claims no rights, licenses, or implied ownership over any of your content.
+        </p>
+      </section>
+
+      <!-- Section 7 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">7. Changes to This Privacy Policy</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          We may update this Privacy Policy periodically to reflect technological improvements or regulatory requirements. Any updates will be posted directly to this page with an updated revision date.
+        </p>
+      </section>
+
+      <!-- Section 8 -->
+      <section class="space-y-3 pb-8">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">8. Contact Us</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          If you have questions, concerns, or inquiries regarding our privacy architecture, you can contact us at:
+        </p>
+        <div class="pt-1">
+          <a href="mailto:hello@3dmodelfileconverter.com" class="font-mono text-[14px] font-semibold text-link hover:underline">
+            hello@3dmodelfileconverter.com
+          </a>
+        </div>
+      </section>
+
+    </article>
+  </div>
+</Layout>

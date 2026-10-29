@@ -1,0 +1,127 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const pageTitle = "About Us | 3D Model File Converter";
+const pageDescription = "Learn about 3D Model File Converter - a fast, free, 100% private 3D model conversion tool running entirely in your browser using WebAssembly.";
+---
+
+<Layout title={pageTitle} description={pageDescription} canonicalPath="/about">
+  <div class="py-16 sm:py-20">
+    <!-- Header -->
+    <div class="text-center max-w-[800px] mx-auto px-4 sm:px-6 mb-12">
+      <p class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4 tracking-wide">
+        Our Purpose · Built for Makers & Engineers
+      </p>
+      <h1 class="text-[32px] sm:text-[48px] font-semibold leading-[1] tracking-[-2.4px] text-ink mb-4">
+        About 3D Model File Converter
+      </h1>
+      <p class="text-[16px] leading-6 text-body max-w-[620px] mx-auto">
+        We built the tool we needed: a fast, privacy-respecting 3D model converter that runs entirely on your device with no file uploads, no subscriptions, and no limits.
+      </p>
+    </div>
+
+    <!-- Main Content Container -->
+    <div class="max-w-[860px] mx-auto px-4 sm:px-6 space-y-10">
+
+      <!-- Story Card -->
+      <div class="bg-canvas-elevated border border-hairline rounded-md p-6 sm:p-8">
+        <h2 class="text-[20px] sm:text-[24px] font-semibold text-ink mb-3 tracking-[-0.5px]">
+          The Problem with Cloud-Based 3D Converters
+        </h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body mb-4">
+          Most online 3D converters force you to upload your proprietary CAD drawings, industrial prototypes, or high-poly 3D scans to remote servers. This introduces serious privacy risks for copyrighted or patent-pending intellectual property, mandatory waiting queues, artificial 50MB paywalls, and slow upload speeds.
+        </p>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          <strong>3D Model File Converter was built to eliminate those compromises.</strong> By porting industrial-grade CAD engines (OpenCASCADE Technology) and modern 3D graphics libraries to WebAssembly and Web Workers, our converter performs complex B-Rep surface modeling and mesh tessellations entirely in your browser’s local memory. Your files never leave your computer.
+        </p>
+      </div>
+
+      <!-- Core Principles Grid -->
+      <section>
+        <h2 class="text-[20px] sm:text-[24px] font-semibold text-ink mb-6 tracking-[-0.5px]">
+          Our Core Principles
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+          <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+            <div class="text-[24px] mb-3">🔒</div>
+            <h3 class="text-[15px] font-semibold text-ink mb-1.5">100% Client-Side Privacy</h3>
+            <p class="text-[13px] leading-5 text-body">
+              Your 3D designs stay on your hardware. We never transmit, store, or log your geometry. Processing happens in-memory and is wiped the moment you close the tab.
+            </p>
+          </div>
+
+          <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+            <div class="text-[24px] mb-3">⚡</div>
+            <h3 class="text-[15px] font-semibold text-ink mb-1.5">Industrial CAD & Mesh Engines</h3>
+            <p class="text-[13px] leading-5 text-body">
+              Powered by OpenCascade.js compiled to WebAssembly for precise STEP and IGES boundary representation, alongside Three.js for high-speed polygon mesh processing.
+            </p>
+          </div>
+
+          <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+            <div class="text-[24px] mb-3">📦</div>
+            <h3 class="text-[15px] font-semibold text-ink mb-1.5">Batch Processing & ZIP Downloads</h3>
+            <p class="text-[13px] leading-5 text-body">
+              Convert one file or dozens simultaneously using dedicated background Web Workers that keep your user interface fluid and responsive. Download files individually or bundled in a ZIP.
+            </p>
+          </div>
+
+          <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+            <div class="text-[24px] mb-3">∞</div>
+            <h3 class="text-[15px] font-semibold text-ink mb-1.5">Zero Paywalls & No Accounts</h3>
+            <p class="text-[13px] leading-5 text-body">
+              No sign-ups, no monthly credits, no hidden email gates, and no watermarks. Open the site, drop your file, convert, and download instantly.
+            </p>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Supported Formats Overview -->
+      <section class="bg-canvas-elevated border border-hairline rounded-md p-6 sm:p-8">
+        <h2 class="text-[20px] sm:text-[24px] font-semibold text-ink mb-4 tracking-[-0.5px]">
+          Supported 3D Formats
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div class="p-3.5 rounded-sm bg-canvas border border-hairline">
+            <span class="font-mono text-[12px] font-bold text-ink block mb-1">STL (.stl)</span>
+            <p class="text-[12px] leading-4 text-mute">Standard stereolithography mesh for FDM/SLA 3D printing and slicing.</p>
+          </div>
+          <div class="p-3.5 rounded-sm bg-canvas border border-hairline">
+            <span class="font-mono text-[12px] font-bold text-ink block mb-1">OBJ (.obj)</span>
+            <p class="text-[12px] leading-4 text-mute">Wavefront polygonal 3D model format supported across VFX, Blender, and games.</p>
+          </div>
+          <div class="p-3.5 rounded-sm bg-canvas border border-hairline">
+            <span class="font-mono text-[12px] font-bold text-ink block mb-1">STEP (.step, .stp)</span>
+            <p class="text-[12px] leading-4 text-mute">ISO 10303 standard parametric CAD format used in SolidWorks, Fusion 360, and CNC.</p>
+          </div>
+          <div class="p-3.5 rounded-sm bg-canvas border border-hairline">
+            <span class="font-mono text-[12px] font-bold text-ink block mb-1">3MF (.3mf)</span>
+            <p class="text-[12px] leading-4 text-mute">Modern 3D Manufacturing Format with XML compression, units, and assembly support.</p>
+          </div>
+          <div class="p-3.5 rounded-sm bg-canvas border border-hairline">
+            <span class="font-mono text-[12px] font-bold text-ink block mb-1">GLB (.glb)</span>
+            <p class="text-[12px] leading-4 text-mute">Binary glTF format optimized for web rendering, three.js, AR/VR, and games.</p>
+          </div>
+          <div class="p-3.5 rounded-sm bg-canvas border border-hairline">
+            <span class="font-mono text-[12px] font-bold text-ink block mb-1">IGES (.iges, .igs)</span>
+            <p class="text-[12px] leading-4 text-mute">Legacy Initial Graphics Exchange CAD format supported as input for modern conversions.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA Box -->
+      <div class="text-center py-6">
+        <a
+          href="/"
+          class="inline-flex items-center gap-2 px-6 py-3 rounded-pill bg-ink text-white text-[14px] font-medium hover:opacity-90 transition-opacity"
+        >
+          <span>Open 3D Model Converter</span>
+          <span aria-hidden="true">→</span>
+        </a>
+      </div>
+
+    </div>
+  </div>
+</Layout>

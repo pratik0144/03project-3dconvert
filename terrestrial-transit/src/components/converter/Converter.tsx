@@ -76,11 +76,12 @@ export default function Converter({ defaultFrom, defaultTo }: ConverterProps) {
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
 
   const detectedInputFormat = useMemo(() => {
-    if (defaultFrom) return defaultFrom;
-    if (files.length === 0) return null;
-    const formats = new Set(files.map(f => f.inputFormat));
-    if (formats.size === 1) return [...formats][0];
-    return null;
+    if (files.length > 0) {
+      const formats = new Set(files.map(f => f.inputFormat));
+      if (formats.size === 1) return [...formats][0];
+      return null;
+    }
+    return defaultFrom || null;
   }, [files, defaultFrom]);
 
   const compatibleOutputs = useMemo(() => {

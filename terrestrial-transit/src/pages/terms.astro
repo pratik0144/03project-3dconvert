@@ -1,0 +1,113 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const pageTitle = "Terms & Conditions | 3D Model File Converter";
+const pageDescription = "Read the Terms and Conditions for 3D Model File Converter. Review terms governing usage of our free in-browser 3D model conversion utility.";
+---
+
+<Layout title={pageTitle} description={pageDescription} canonicalPath="/terms">
+  <div class="py-16 sm:py-20">
+    <!-- Header -->
+    <div class="text-center max-w-[800px] mx-auto px-4 sm:px-6 mb-12">
+      <p class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4 tracking-wide">
+        Legal Terms · Updated for 2026
+      </p>
+      <h1 class="text-[32px] sm:text-[48px] font-semibold leading-[1] tracking-[-2.4px] text-ink mb-4">
+        Terms & Conditions
+      </h1>
+      <p class="text-[16px] leading-6 text-body max-w-[620px] mx-auto">
+        Please review these Terms and Conditions carefully before using 3D Model File Converter. By accessing the site, you agree to be bound by these terms.
+      </p>
+    </div>
+
+    <!-- Main Content Container -->
+    <article class="max-w-[800px] mx-auto px-4 sm:px-6 space-y-8">
+
+      <!-- Summary Box -->
+      <div class="bg-canvas-elevated border border-hairline rounded-md p-6 sm:p-8">
+        <h2 class="text-[16px] font-semibold text-ink mb-2">Key Highlights</h2>
+        <p class="text-[14px] leading-6 text-body">
+          Our service is free, requires no account, and executes 100% on your device. You retain full ownership of all your 3D files. Conversions between polygonal meshes and CAD B-Rep representations involve mathematical approximations (such as tessellation and faceted surfaces); we advise verifying geometry dimensions before critical manufacturing or CNC production.
+        </p>
+      </div>
+
+      <!-- Section 1 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">1. Acceptance of Terms</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          By accessing or using 3D Model File Converter (<span class="font-mono text-[13px] text-ink">3dmodelfileconverter.com</span>), you agree to comply with and be bound by these Terms and Conditions and our Privacy Policy. If you do not agree to these terms, please do not access or use the website.
+        </p>
+      </section>
+
+      <!-- Section 2 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">2. Description of Service</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          3D Model File Converter provides browser-based file conversion between various 3D polygonal and CAD formats (including STL, OBJ, STEP, 3MF, GLB, and IGES). The service operates client-side using JavaScript, WebAssembly, and HTML5 Web Workers without uploading files to remote servers.
+        </p>
+      </section>
+
+      <!-- Section 3 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">3. User Ownership & Intellectual Property</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          You retain all rights, title, and interest in and to any 3D models, mesh geometries, or CAD assemblies you process using our tool. Because the service does not transmit your files over the network, we do not access, view, or retain any copies of your files.
+        </p>
+      </section>
+
+      <!-- Section 4 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">4. Technical Disclaimers & Geometry Approximations</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          When converting between fundamentally different 3D representations, mathematical approximations are required:
+        </p>
+        <ul class="list-disc pl-5 space-y-2 text-[14px] sm:text-[15px] leading-6 text-body">
+          <li><strong>CAD to Mesh (e.g. STEP/IGES to STL/OBJ/GLB/3MF):</strong> Exact analytical curves and B-Rep surfaces are converted into discrete triangle meshes (tessellation). While visually accurate, smooth parametric NURBS equations are converted into planar facets.</li>
+          <li><strong>Mesh to CAD (e.g. STL/OBJ/3MF to STEP):</strong> Polygon meshes converted into STEP produce faceted boundary representations (faceted B-Rep) where each triangle becomes a planar CAD face. This does not regenerate parametric editable features.</li>
+          <li><strong>Units & Scaling:</strong> Formats such as STL do not inherently declare physical units. While default scaling assumptions are provided, you are responsible for confirming units before physical manufacturing.</li>
+        </ul>
+      </section>
+
+      <!-- Section 5 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">5. Disclaimer of Warranties</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          The service is provided on an <strong>"AS IS"</strong> and <strong>"AS AVAILABLE"</strong> basis without warranties of any kind, either express or implied, including but not limited to implied warranties of merchantability, fitness for a particular purpose, or non-infringement.
+        </p>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          We do not guarantee that conversions will be completely error-free or suitable for critical structural, aerospace, medical, or life-safety applications. Always verify converted geometry with professional CAD/CAM inspection software before CNC machining, tooling, or production.
+        </p>
+      </section>
+
+      <!-- Section 6 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">6. Limitation of Liability</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          To the maximum extent permitted by applicable law, in no event shall 3D Model File Converter, its developers, or affiliates be liable for any direct, indirect, incidental, special, consequential, or punitive damages resulting from the use or inability to use the service, including damages from failed prints, machining errors, or data loss.
+        </p>
+      </section>
+
+      <!-- Section 7 -->
+      <section class="space-y-3">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">7. Prohibited Uses</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          You agree not to attempt to disrupt or impair the site's infrastructure, bypass client-side security mechanisms, or distribute malicious code through the website.
+        </p>
+      </section>
+
+      <!-- Section 8 -->
+      <section class="space-y-3 pb-8">
+        <h2 class="text-[20px] sm:text-[22px] font-semibold text-ink tracking-tight">8. Contact Information</h2>
+        <p class="text-[14px] sm:text-[15px] leading-6 text-body">
+          If you have questions regarding these Terms & Conditions, please contact us at:
+        </p>
+        <div class="pt-1">
+          <a href="mailto:hello@3dmodelfileconverter.com" class="font-mono text-[14px] font-semibold text-link hover:underline">
+            hello@3dmodelfileconverter.com
+          </a>
+        </div>
+      </section>
+
+    </article>
+  </div>
+</Layout>

@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://3dmodelfileconverter.com/sitemap-index.xml
+
+# All conversions run client-side — no server-side content to block

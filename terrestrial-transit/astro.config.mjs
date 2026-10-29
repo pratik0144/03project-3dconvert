@@ -2,10 +2,21 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import tailwindcss from '@tailwindcss/vite';
+import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
   site: 'https://3dmodelfileconverter.com',
-  integrations: [react()],
+  integrations: [
+    react(),
+    sitemap({
+      filter: (page) =>
+        // Exclude duplicate alias pages from sitemap
+        !page.includes('/about-us') &&
+        !page.includes('/contact-us') &&
+        !page.includes('/privacy-policy') &&
+        !page.includes('/terms-and-conditions'),
+    }),
+  ],
   vite: {
     optimizeDeps: {
       include: [

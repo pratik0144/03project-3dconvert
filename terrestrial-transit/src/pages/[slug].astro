@@ -1,0 +1,278 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Converter from '../components/converter/Converter';
+import { CONVERSIONS, FORMATS, slug } from '../data/conversions';
+import { SEO_CONTENT } from '../data/seo-content';
+
+export function getStaticPaths() {
+  return CONVERSIONS.map(({ from, to }) => ({
+    params: { slug: slug(from, to) },
+    props: { from, to },
+  }));
+}
+
+const { from, to } = Astro.props;
+const fromLabel = FORMATS[from];
+const toLabel = FORMATS[to];
+const pageSlug = slug(from, to);
+const seo = SEO_CONTENT[pageSlug];
+
+// Fallback values if SEO content is missing
+const title = seo?.title ?? `${fromLabel} to ${toLabel} Converter | 3D Model File Converter`;
+const description = seo?.metaDescription ?? `Convert ${fromLabel} to ${toLabel} online for free. Fast, private, browser-based 3D file converter. No upload required.`;
+const h1Text = seo?.h1 ?? `${fromLabel} to ${toLabel} Converter`;
+const h1Sub = seo?.h1Subtitle ?? `Convert ${fromLabel} files to ${toLabel} format — free, private, and entirely in your browser.`;
+
+// Structured data for each conversion tool page
+const structuredData = [
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": `${fromLabel} to ${toLabel} Converter`,
+    "url": `https://3dmodelfileconverter.com/${pageSlug}`,
+    "description": description,
+    "applicationCategory": "DesignApplication",
+    "operatingSystem": "Any (browser-based)",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "browserRequirements": "Requires a modern browser with WebAssembly support",
+    "featureList": [
+      `${fromLabel} to ${toLabel} conversion`,
+      "100% client-side processing",
+      "No file upload required",
+      "Batch conversion support",
+      "3D preview before download",
+      "No signup or account needed"
+    ],
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "3D Model File Converter",
+      "url": "https://3dmodelfileconverter.com"
+    }
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "3D Model File Converter",
+        "item": "https://3dmodelfileconverter.com"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": `${fromLabel} to ${toLabel}`,
+        "item": `https://3dmodelfileconverter.com/${pageSlug}`
+      }
+    ]
+  }
+];
+
+// Related conversions for internal linking (same source format, different targets)
+const relatedFromSame = CONVERSIONS
+  .filter(c => c.from === from && c.to !== to)
+  .map(c => ({ from: c.from, to: c.to, slug: slug(c.from, c.to) }));
+
+// Reverse conversion (if it exists)
+const reverseSlug = slug(to, from);
+const hasReverse = CONVERSIONS.some(c => c.from === to && c.to === from);
+---
+
+<Layout
+  title={title}
+  description={description}
+  canonicalPath={`/${pageSlug}`}
+  ogTitle={`${fromLabel} to ${toLabel} Converter — Free Online Tool`}
+  ogDescription={description}
+  structuredData={structuredData}
+>
+  <section class="py-16 sm:py-20">
+    <!-- Breadcrumb Navigation -->
+    <nav aria-label="Breadcrumb" class="max-w-[800px] mx-auto px-4 sm:px-6 mb-8">
+      <ol class="flex items-center gap-1.5 text-[13px] text-mute font-medium" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item" class="hover:text-ink transition-colors">
+            <span itemprop="name">3D Converter</span>
+          </a>
+          <meta itemprop="position" content="1" />
+        </li>
+        <li aria-hidden="true" class="text-faint">/</li>
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <span itemprop="name" class="text-ink">{fromLabel} to {toLabel}</span>
+          <meta itemprop="position" content="2" />
+        </li>
+      </ol>
+    </nav>
+
+    <!-- Hero -->
+    <div class="text-center max-w-[800px] mx-auto px-4 sm:px-6 mb-12">
+      <p class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-4 tracking-wide">
+        Free · Private · In-Browser
+      </p>
+      <h1 class="text-[32px] sm:text-[48px] font-semibold leading-[1] tracking-[-2.4px] text-ink mb-4">
+        {h1Text}
+      </h1>
+      <p class="text-[16px] leading-6 text-body max-w-[600px] mx-auto">
+        {h1Sub}
+      </p>
+    </div>
+
+    <!-- Converter tool -->
+    <Converter client:load defaultFrom={from} defaultTo={to} />
+  </section>
+
+  <!-- How it works -->
+  <section class="py-16 border-t border-hairline">
+    <div class="max-w-[1200px] mx-auto px-4 sm:px-6">
+      <p class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-8 text-center tracking-wide">
+        How it works
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+          <div class="text-[24px] mb-3">📁</div>
+          <h3 class="text-[14px] font-semibold text-ink mb-1">Drop your {fromLabel} file</h3>
+          <p class="text-[14px] leading-5 text-body">
+            Drag and drop your .{from} file onto the converter. Format is detected automatically.
+          </p>
+        </div>
+        <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+          <div class="text-[24px] mb-3">🔄</div>
+          <h3 class="text-[14px] font-semibold text-ink mb-1">{toLabel} is pre-selected</h3>
+          <p class="text-[14px] leading-5 text-body">
+            The output format is set to {toLabel} for you. We flag lossy conversions so there are no surprises.
+          </p>
+        </div>
+        <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+          <div class="text-[24px] mb-3">⚡</div>
+          <h3 class="text-[14px] font-semibold text-ink mb-1">Convert instantly</h3>
+          <p class="text-[14px] leading-5 text-body">
+            Everything runs in Web Workers on your device. Nothing is uploaded to a server — ever.
+          </p>
+        </div>
+        <div class="bg-canvas-elevated border border-hairline rounded-md p-6">
+          <div class="text-[24px] mb-3">📦</div>
+          <h3 class="text-[14px] font-semibold text-ink mb-1">Download your .{to === '3mf' ? '3mf' : to} file</h3>
+          <p class="text-[14px] leading-5 text-body">
+            Get each converted file individually or download all results as a ZIP archive.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Unique SEO Content Section -->
+  {seo && (
+    <section class="py-16 border-t border-hairline">
+      <div class="max-w-[860px] mx-auto px-4 sm:px-6">
+        <article class="space-y-10">
+
+          <!-- Intro Section -->
+          <div>
+            <h2 class="text-[22px] sm:text-[26px] font-semibold text-ink mb-4 tracking-[-0.5px]">
+              {seo.introHeading}
+            </h2>
+            {seo.introText.split('\n\n').map((paragraph: string) => (
+              <p class="text-[15px] leading-7 text-body mb-4">
+                {paragraph}
+              </p>
+            ))}
+          </div>
+
+          <!-- How It Works (Technical) -->
+          <div class="bg-canvas-elevated border border-hairline rounded-md p-6 sm:p-8">
+            <h2 class="text-[20px] sm:text-[24px] font-semibold text-ink mb-4 tracking-[-0.5px]">
+              {seo.howItWorksHeading}
+            </h2>
+            {seo.howItWorksText.split('\n\n').map((paragraph: string) => (
+              <p class="text-[14px] sm:text-[15px] leading-7 text-body mb-4">
+                {paragraph}
+              </p>
+            ))}
+          </div>
+
+          <!-- Format Notes (Unique per page) -->
+          <div>
+            <h2 class="text-[22px] sm:text-[26px] font-semibold text-ink mb-4 tracking-[-0.5px]">
+              {seo.formatNotesHeading}
+            </h2>
+            {seo.formatNotesText.split('\n\n').map((paragraph: string) => (
+              <p class="text-[15px] leading-7 text-body mb-4">
+                {paragraph}
+              </p>
+            ))}
+          </div>
+
+          <!-- Use Cases -->
+          <div class="bg-canvas-elevated border border-hairline rounded-md p-6 sm:p-8">
+            <h2 class="text-[20px] sm:text-[24px] font-semibold text-ink mb-4 tracking-[-0.5px]">
+              {seo.useCasesHeading}
+            </h2>
+            {seo.useCasesText.split('\n\n').map((paragraph: string) => (
+              <p class="text-[14px] sm:text-[15px] leading-7 text-body mb-4">
+                {paragraph}
+              </p>
+            ))}
+          </div>
+
+        </article>
+      </div>
+    </section>
+  )}
+
+  <!-- Related Conversions (Internal Linking) -->
+  <section class="py-16 border-t border-hairline">
+    <div class="max-w-[860px] mx-auto px-4 sm:px-6">
+      <h2 class="text-[22px] sm:text-[26px] font-semibold text-ink mb-6 tracking-[-0.5px] text-center">
+        Related Conversions
+      </h2>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Reverse conversion */}
+        {hasReverse && (
+          <a
+            href={`/${reverseSlug}`}
+            class="bg-canvas-elevated border border-hairline rounded-md p-5 hover:border-ink/20 transition-colors group"
+          >
+            <span class="text-[14px] font-semibold text-ink group-hover:text-link transition-colors">
+              {toLabel} to {fromLabel} Converter
+            </span>
+            <span class="block text-[13px] leading-5 text-mute mt-1">
+              Need the reverse? Convert {toLabel} files back to {fromLabel} format.
+            </span>
+          </a>
+        )}
+
+        {/* Other conversions from the same source format */}
+        {relatedFromSame.map(({ from: rFrom, to: rTo, slug: rSlug }) => (
+          <a
+            href={`/${rSlug}`}
+            class="bg-canvas-elevated border border-hairline rounded-md p-5 hover:border-ink/20 transition-colors group"
+          >
+            <span class="text-[14px] font-semibold text-ink group-hover:text-link transition-colors">
+              {FORMATS[rFrom]} to {FORMATS[rTo]} Converter
+            </span>
+            <span class="block text-[13px] leading-5 text-mute mt-1">
+              Convert {FORMATS[rFrom]} files to {FORMATS[rTo]} format instead.
+            </span>
+          </a>
+        ))}
+      </div>
+
+      <!-- Back to all converters -->
+      <div class="text-center mt-8">
+        <a
+          href="/"
+          class="inline-flex items-center gap-2 px-6 py-3 rounded-pill bg-ink text-white text-[14px] font-medium hover:opacity-90 transition-opacity"
+        >
+          <span>All Conversions</span>
+          <span aria-hidden="true">→</span>
+        </a>
+      </div>
+    </div>
+  </section>
+</Layout>

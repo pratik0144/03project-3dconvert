@@ -1,0 +1,131 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const pageTitle = "Contact Us | 3D Model File Converter";
+const pageDescription = "Get in touch with 3D Model File Converter. Contact us at hello@3dmodelfileconverter.com for support, bug reports, format requests, or feedback.";
+---
+
+<Layout title={pageTitle} description={pageDescription} canonicalPath="/contact">
+  <div class="py-16 sm:py-24 flex flex-col justify-center items-center">
+    <div class="text-center max-w-[640px] mx-auto px-4 sm:px-6 w-full space-y-8">
+
+      <!-- Header -->
+      <div>
+        <p class="font-mono text-[12px] font-medium leading-4 uppercase text-mute mb-3 tracking-wide">
+          Get in Touch · Support & Feedback
+        </p>
+        <h1 class="text-[32px] sm:text-[44px] font-semibold leading-[1.1] tracking-[-2px] text-ink mb-3">
+          Contact Us
+        </h1>
+        <p class="text-[15px] sm:text-[16px] leading-6 text-body max-w-[540px] mx-auto">
+          Encountered an issue with a complex STEP/IGES model, have a feature request, or want to share feedback? We're here to help.
+        </p>
+      </div>
+
+      <!-- Direct Contact Card -->
+      <div class="bg-canvas-elevated border border-hairline rounded-md p-6 sm:p-8 text-center space-y-4">
+        <span class="font-mono text-[12px] font-medium uppercase text-mute tracking-wide block">
+          Direct Email
+        </span>
+
+        <div>
+          <a
+            href="mailto:hello@3dmodelfileconverter.com"
+            class="font-mono text-[16px] sm:text-[22px] font-semibold text-link hover:underline whitespace-nowrap inline-block"
+          >
+            hello@3dmodelfileconverter.com
+          </a>
+        </div>
+
+        <div class="flex items-center justify-center gap-3 pt-2">
+          <a
+            href="mailto:hello@3dmodelfileconverter.com"
+            class="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-pill text-[14px] font-medium bg-ink text-white hover:opacity-90 transition-opacity"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <span>Open Email</span>
+          </a>
+
+          <button
+            id="copy-email-btn"
+            type="button"
+            class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-pill text-[14px] font-medium border border-hairline bg-canvas hover:bg-hairline-soft text-ink transition-colors cursor-pointer"
+            title="Copy email to clipboard"
+          >
+            <svg id="copy-icon" class="w-4 h-4 text-mute" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+            </svg>
+            <span id="copy-label">Copy</span>
+          </button>
+        </div>
+
+        <p class="text-[12px] text-mute pt-1">
+          We typically respond within 24–48 business hours.
+        </p>
+      </div>
+
+      <!-- Topics Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
+        <div class="bg-canvas-elevated border border-hairline rounded-md p-4">
+          <div class="text-[20px] mb-2">🐛</div>
+          <h3 class="text-[13px] font-semibold text-ink mb-1">Bug Reports</h3>
+          <p class="text-[12px] leading-4 text-mute">Found an unparseable 3D file or broken mesh? Let us know so we can fix the parser.</p>
+        </div>
+        <div class="bg-canvas-elevated border border-hairline rounded-md p-4">
+          <div class="text-[20px] mb-2">💡</div>
+          <h3 class="text-[13px] font-semibold text-ink mb-1">Format Requests</h3>
+          <p class="text-[12px] leading-4 text-mute">Looking for PLY, DXF, or custom CAD tessellation options? Share your use case.</p>
+        </div>
+        <div class="bg-canvas-elevated border border-hairline rounded-md p-4">
+          <div class="text-[20px] mb-2">🤝</div>
+          <h3 class="text-[13px] font-semibold text-ink mb-1">Partnerships</h3>
+          <p class="text-[12px] leading-4 text-mute">Integrations, open-source collaboration, or embedded client-side tools.</p>
+        </div>
+      </div>
+
+      <!-- Quick Back Link -->
+      <div>
+        <a
+          href="/"
+          class="inline-flex items-center gap-1.5 text-[13px] font-medium text-mute hover:text-ink transition-colors"
+        >
+          <span>← Back to 3D Converter</span>
+        </a>
+      </div>
+
+    </div>
+  </div>
+</Layout>
+
+<script>
+  const copyBtn = document.getElementById('copy-email-btn');
+  const copyLabel = document.getElementById('copy-label');
+
+  if (copyBtn && copyLabel) {
+    copyBtn.addEventListener('click', async () => {
+      const email = 'hello@3dmodelfileconverter.com';
+      try {
+        await navigator.clipboard.writeText(email);
+        copyLabel.textContent = 'Copied!';
+        setTimeout(() => {
+          copyLabel.textContent = 'Copy';
+        }, 2000);
+      } catch (err) {
+        // Fallback for older browsers
+        const temp = document.createElement('textarea');
+        temp.value = email;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        copyLabel.textContent = 'Copied!';
+        setTimeout(() => {
+          copyLabel.textContent = 'Copy';
+        }, 2000);
+      }
+    });
+  }
+</script>
